@@ -1,0 +1,26 @@
+{
+  "tools": [
+    {
+      "name": "fetchUser",
+      "description": "Fetch a user by id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "send-message",
+      "description": "Post a message to a channel.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string" },
+          "body": { "type": "string" }
+        }
+      }
+    }
+  ]
+}
