@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	mcpcheck [--format text|json] <path>
+//	mcpcheck [--format text|json|sarif] <path>
 //
 // `path` may be a tools.json (MCP tools/list response or bare list), a
 // single .py file, or a directory of Python sources. TypeScript intake
@@ -21,9 +21,9 @@ import (
 )
 
 func main() {
-	format := flag.String("format", "text", "output format: text|json")
+	format := flag.String("format", "text", "output format: text|json|sarif")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s [--format text|json] <path>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [--format text|json|sarif] <path>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  path: .json (tools/list response), .py file, or directory of Python sources\n")
 	}
 	flag.Parse()
@@ -61,8 +61,12 @@ func run(path, format string) error {
 		if err := output.WriteJSON(os.Stdout, findings); err != nil {
 			return err
 		}
+	case "sarif":
+		if err := output.WriteSARIF(os.Stdout, findings); err != nil {
+			return err
+		}
 	default:
-		return fmt.Errorf("unknown --format %q (want text|json)", format)
+		return fmt.Errorf("unknown --format %q (want text|json|sarif)", format)
 	}
 
 	// Exit 1 if any error-severity finding fired; otherwise 0.
