@@ -98,14 +98,53 @@ func (pc *ProjectContext) ReportTool(tool *mcpmodel.Tool, message string) {
 
 func (pc *ProjectContext) Findings() []Finding { return pc.findings }
 
+// ComparisonContext is handed to rules that compare two ToolSets — the
+// canonical use case is comparing a static intake against a live-mode
+// intake to surface tools that exist in one but not the other. Either
+// or both ToolSets may be nil in degenerate cases; rules should guard.
+type ComparisonContext struct {
+	Static   *mcpmodel.ToolSet
+	Live     *mcpmodel.ToolSet
+	findings []Finding
+	rule     *Rule
+}
+
+// Report records a finding not associated with any specific tool. Used
+// when the discrepancy is at the toolset level (e.g. tool counts).
+func (cc *ComparisonContext) Report(message string) {
+	cc.findings = append(cc.findings, Finding{
+		RuleID:   cc.rule.ID,
+		Severity: cc.rule.Severity,
+		Category: cc.rule.Category,
+		Message:  message,
+	})
+}
+
+// ReportTool attaches a finding to a specific tool from one of the two
+// ToolSets. Source coordinates flow from the tool itself.
+func (cc *ComparisonContext) ReportTool(tool *mcpmodel.Tool, message string) {
+	cc.findings = append(cc.findings, Finding{
+		RuleID:     cc.rule.ID,
+		Severity:   cc.rule.Severity,
+		Category:   cc.rule.Category,
+		Message:    message,
+		ToolName:   tool.Name,
+		SourceFile: tool.SourceFile,
+		SourceLine: tool.SourceLine,
+	})
+}
+
+func (cc *ComparisonContext) Findings() []Finding { return cc.findings }
+
 type Rule struct {
-	ID                    string
-	Category              Category
-	Severity              Severity
-	Description           string
-	Fix                   FixLevel
-	Implementation        func(*Context)
-	ProjectImplementation func(*ProjectContext)
+	ID                       string
+	Category                 Category
+	Severity                 Severity
+	Description              string
+	Fix                      FixLevel
+	Implementation           func(*Context)
+	ProjectImplementation    func(*ProjectContext)
+	ComparisonImplementation func(*ComparisonContext)
 }
 
 var registry []*Rule
@@ -117,8 +156,8 @@ func Register(r *Rule) {
 	if r.ID == "" {
 		panic("v2.Register: rule has empty ID")
 	}
-	if r.Implementation == nil && r.ProjectImplementation == nil {
-		panic("v2.Register: rule " + r.ID + " declares neither Implementation nor ProjectImplementation")
+	if r.Implementation == nil && r.ProjectImplementation == nil && r.ComparisonImplementation == nil {
+		panic("v2.Register: rule " + r.ID + " declares no implementation callback")
 	}
 	for _, existing := range registry {
 		if existing.ID == r.ID {
@@ -160,6 +199,21 @@ func RunProject(rules []*Rule, set *mcpmodel.ToolSet) []Finding {
 		pc := &ProjectContext{ToolSet: set, rule: r}
 		r.ProjectImplementation(pc)
 		findings = append(findings, pc.Findings()...)
+	}
+	return findings
+}
+
+// RunComparison invokes comparison-scope rules against a static and a
+// live ToolSet. Rules without a ComparisonImplementation are skipped.
+func RunComparison(rules []*Rule, static, live *mcpmodel.ToolSet) []Finding {
+	var findings []Finding
+	for _, r := range rules {
+		if r.ComparisonImplementation == nil {
+			continue
+		}
+		cc := &ComparisonContext{Static: static, Live: live, rule: r}
+		r.ComparisonImplementation(cc)
+		findings = append(findings, cc.Findings()...)
 	}
 	return findings
 }
