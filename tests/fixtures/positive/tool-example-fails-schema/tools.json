@@ -1,0 +1,34 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Fetch a user by id; example below is stale (no id field).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "required": ["id"],
+        "examples": [
+          { "user_id": "abc-123" }
+        ]
+      }
+    },
+    {
+      "name": "create_org",
+      "description": "Create an organization; second example has wrong type for limit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name":  { "type": "string" },
+          "limit": { "type": "integer" }
+        },
+        "required": ["name"],
+        "examples": [
+          { "name": "Acme", "limit": 5 },
+          { "name": "Globex", "limit": "ten" }
+        ]
+      }
+    }
+  ]
+}

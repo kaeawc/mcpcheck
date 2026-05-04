@@ -1,0 +1,45 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Fetch a user by id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "required": ["id"],
+        "examples": [
+          { "id": "abc-123" },
+          { "id": "u-99" }
+        ]
+      }
+    },
+    {
+      "name": "no_examples_listed",
+      "description": "Tools without an examples array are out of scope for this rule.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "create_org",
+      "description": "All examples valid.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name":  { "type": "string" },
+          "limit": { "type": "integer" }
+        },
+        "required": ["name"],
+        "examples": [
+          { "name": "Acme" },
+          { "name": "Globex", "limit": 10 }
+        ]
+      }
+    }
+  ]
+}
