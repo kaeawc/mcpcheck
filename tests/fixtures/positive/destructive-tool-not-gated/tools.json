@@ -1,0 +1,49 @@
+{
+  "tools": [
+    {
+      "name": "delete_user",
+      "description": "Delete the user with the given id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "send_email",
+      "description": "Send an email to the recipient.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to":      { "type": "string" },
+          "subject": { "type": "string" },
+          "body":    { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "transfer_funds",
+      "description": "Transfer funds between two accounts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from":   { "type": "string" },
+          "to":     { "type": "string" },
+          "amount": { "type": "number" }
+        }
+      }
+    },
+    {
+      "name": "drop_table",
+      "description": "Drop the named table.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "table": { "type": "string" }
+        }
+      }
+    }
+  ]
+}
