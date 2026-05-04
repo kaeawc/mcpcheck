@@ -4,6 +4,7 @@
 //
 //	mcpcheck [--format text|json|sarif] <path>
 //	mcpcheck [--format text|json|sarif] --live "<command>"
+//	mcpcheck [--format text|json|sarif] --live "<command>" <path>
 //	mcpcheck --list-rules [--format text|json]
 //
 // `path` may be a tools.json (MCP tools/list response or bare list), a
@@ -12,7 +13,10 @@
 // `--live "<command>"` boots the given command as an MCP subprocess,
 // runs the initialize / tools/list handshake over stdio, and
 // validates whatever tools the server actually advertises at runtime.
-// Catches dynamically-registered tools that static intakes miss.
+//
+// Providing both `--live` and `<path>` runs both intakes plus a
+// comparison phase that flags tools advertised by one but not the
+// other (catches dynamic registration drift).
 //
 // `--list-rules` prints the registered rule set and exits without
 // running an analysis.
@@ -49,44 +53,55 @@ func main() {
 		return
 	}
 
-	if *live != "" {
-		if flag.NArg() != 0 {
-			fmt.Fprintln(os.Stderr, "mcpcheck: --live and positional <path> are mutually exclusive")
-			os.Exit(2)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), *liveTimeout)
-		defer cancel()
-		if err := runLive(ctx, *live, *format); err != nil {
-			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
-			os.Exit(1)
-		}
-		return
-	}
+	hasLive := *live != ""
+	hasPath := flag.NArg() == 1
 
-	if flag.NArg() != 1 {
+	if !hasLive && !hasPath {
+		usage()
+		os.Exit(2)
+	}
+	if flag.NArg() > 1 {
 		usage()
 		os.Exit(2)
 	}
 
-	if err := run(flag.Arg(0), *format); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), *liveTimeout)
+	defer cancel()
+
+	var staticSet, liveSet *mcpmodel.ToolSet
+	if hasPath {
+		set, err := scanner.Load(flag.Arg(0))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
+			os.Exit(1)
+		}
+		staticSet = set
+	}
+	if hasLive {
+		set, err := loadLiveCmd(ctx, *live)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
+			os.Exit(1)
+		}
+		liveSet = set
+	}
+
+	if err := analyzeAll(staticSet, liveSet, *format); err != nil {
 		fmt.Fprintln(os.Stderr, "mcpcheck:", err)
 		os.Exit(1)
 	}
 }
 
-// runLive splits live by whitespace into argv. This is intentionally
-// simplistic — quoted arguments and shell features are not supported.
-// Callers needing them can wrap in `sh -c "..."`.
-func runLive(ctx context.Context, live, format string) error {
+// loadLiveCmd splits live by whitespace and runs the live intake. The
+// argv split is intentionally simplistic — quoted arguments and shell
+// features are not supported. Callers needing them can wrap in
+// `sh -c "..."`.
+func loadLiveCmd(ctx context.Context, live string) (*mcpmodel.ToolSet, error) {
 	parts := strings.Fields(live)
 	if len(parts) == 0 {
-		return fmt.Errorf("--live: empty command")
+		return nil, fmt.Errorf("--live: empty command")
 	}
-	set, err := scanner.LoadLive(ctx, parts)
-	if err != nil {
-		return err
-	}
-	return analyze(set, format)
+	return scanner.LoadLive(ctx, parts)
 }
 
 func usage() {
@@ -109,25 +124,30 @@ func writeRules(format string) error {
 	}
 }
 
-func run(path, format string) error {
-	set, err := scanner.Load(path)
-	if err != nil {
-		return err
-	}
-	return analyze(set, format)
-}
-
-// analyze runs every registered rule against the tool set, writes the
-// findings in the requested format, and exits 1 if any error-severity
-// finding fired. Shared by both the file/directory path and the
-// live-mode subprocess paths.
-func analyze(set *mcpmodel.ToolSet, format string) error {
+// analyzeAll runs every registered rule against whichever tool sets are
+// non-nil and emits the combined findings in the requested format.
+//
+// Per-tool and project-scope rules run on each non-nil set. Comparison
+// rules run only when both sets are present. Source-coordinate context
+// is preserved per-finding so callers can distinguish static and live
+// findings by file path even when the rule itself is set-agnostic.
+func analyzeAll(static, live *mcpmodel.ToolSet, format string) error {
 	rules := v2.All()
 	var findings []v2.Finding
-	for i := range set.Tools {
-		findings = append(findings, v2.Run(rules, &set.Tools[i])...)
+
+	for _, set := range []*mcpmodel.ToolSet{static, live} {
+		if set == nil {
+			continue
+		}
+		for i := range set.Tools {
+			findings = append(findings, v2.Run(rules, &set.Tools[i])...)
+		}
+		findings = append(findings, v2.RunProject(rules, set)...)
 	}
-	findings = append(findings, v2.RunProject(rules, set)...)
+
+	if static != nil && live != nil {
+		findings = append(findings, v2.RunComparison(rules, static, live)...)
+	}
 
 	switch format {
 	case "text":
