@@ -24,6 +24,7 @@ func TestPositiveFixtures(t *testing.T) {
 		"file-tool-no-path-confinement",
 		"tool-example-fails-schema",
 		"tool-example-uses-real-pii",
+		"tool-schema-required-references-undefined-property",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {
@@ -53,6 +54,7 @@ func TestNegativeFixtures(t *testing.T) {
 		"file-tool-no-path-confinement",
 		"tool-example-fails-schema",
 		"tool-example-uses-real-pii",
+		"tool-schema-required-references-undefined-property",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {

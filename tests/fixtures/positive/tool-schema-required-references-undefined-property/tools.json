@@ -1,0 +1,34 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Typo: required references user_id but property is named userId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string" }
+        },
+        "required": ["user_id"]
+      }
+    },
+    {
+      "name": "create_org",
+      "description": "Two missing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" }
+        },
+        "required": ["name", "owner", "tier"]
+      }
+    },
+    {
+      "name": "no_properties",
+      "description": "required without any properties at all.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["id"]
+      }
+    }
+  ]
+}

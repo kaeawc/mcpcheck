@@ -1,0 +1,38 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Required matches a real property.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "no_required",
+      "description": "No required field; rule is silent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "name": "create_org",
+      "description": "Multiple required, all real.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name":  { "type": "string" },
+          "owner": { "type": "string" },
+          "tier":  { "type": "string" }
+        },
+        "required": ["name", "owner", "tier"]
+      }
+    }
+  ]
+}
