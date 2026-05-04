@@ -3,21 +3,30 @@
 // Usage:
 //
 //	mcpcheck [--format text|json|sarif] <path>
+//	mcpcheck [--format text|json|sarif] --live "<command>"
 //	mcpcheck --list-rules [--format text|json]
 //
 // `path` may be a tools.json (MCP tools/list response or bare list), a
 // .py / .ts / .tsx / .js / .mjs / .cjs file, or a directory.
 //
+// `--live "<command>"` boots the given command as an MCP subprocess,
+// runs the initialize / tools/list handshake over stdio, and
+// validates whatever tools the server actually advertises at runtime.
+// Catches dynamically-registered tools that static intakes miss.
+//
 // `--list-rules` prints the registered rule set and exits without
-// running an analysis. Useful for documentation generators and CI
-// integrations that need to know what rules exist.
+// running an analysis.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
+	"github.com/kaeawc/mcpcheck/internal/mcpmodel"
 	"github.com/kaeawc/mcpcheck/internal/output"
 	_ "github.com/kaeawc/mcpcheck/internal/rules"
 	"github.com/kaeawc/mcpcheck/internal/scanner"
@@ -27,11 +36,27 @@ import (
 func main() {
 	format := flag.String("format", "text", "output format: text|json|sarif")
 	listRules := flag.Bool("list-rules", false, "list registered rules and exit")
+	live := flag.String("live", "", "boot the given command as an MCP subprocess and run tools/list")
+	liveTimeout := flag.Duration("live-timeout", 30*time.Second, "deadline for the live-mode handshake")
 	flag.Usage = usage
 	flag.Parse()
 
 	if *listRules {
 		if err := writeRules(*format); err != nil {
+			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *live != "" {
+		if flag.NArg() != 0 {
+			fmt.Fprintln(os.Stderr, "mcpcheck: --live and positional <path> are mutually exclusive")
+			os.Exit(2)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), *liveTimeout)
+		defer cancel()
+		if err := runLive(ctx, *live, *format); err != nil {
 			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
 			os.Exit(1)
 		}
@@ -47,6 +72,21 @@ func main() {
 		fmt.Fprintln(os.Stderr, "mcpcheck:", err)
 		os.Exit(1)
 	}
+}
+
+// runLive splits live by whitespace into argv. This is intentionally
+// simplistic — quoted arguments and shell features are not supported.
+// Callers needing them can wrap in `sh -c "..."`.
+func runLive(ctx context.Context, live, format string) error {
+	parts := strings.Fields(live)
+	if len(parts) == 0 {
+		return fmt.Errorf("--live: empty command")
+	}
+	set, err := scanner.LoadLive(ctx, parts)
+	if err != nil {
+		return err
+	}
+	return analyze(set, format)
 }
 
 func usage() {
@@ -74,7 +114,14 @@ func run(path, format string) error {
 	if err != nil {
 		return err
 	}
+	return analyze(set, format)
+}
 
+// analyze runs every registered rule against the tool set, writes the
+// findings in the requested format, and exits 1 if any error-severity
+// finding fired. Shared by both the file/directory path and the
+// live-mode subprocess paths.
+func analyze(set *mcpmodel.ToolSet, format string) error {
 	rules := v2.All()
 	var findings []v2.Finding
 	for i := range set.Tools {
@@ -99,7 +146,6 @@ func run(path, format string) error {
 		return fmt.Errorf("unknown --format %q (want text|json|sarif)", format)
 	}
 
-	// Exit 1 if any error-severity finding fired; otherwise 0.
 	for _, f := range findings {
 		if f.Severity == v2.SevError {
 			os.Exit(1)
