@@ -21,6 +21,7 @@ func TestPositiveFixtures(t *testing.T) {
 		"destructive-tool-not-gated",
 		"tool-name-collision",
 		"network-tool-no-allowlist",
+		"file-tool-no-path-confinement",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {
@@ -47,6 +48,7 @@ func TestNegativeFixtures(t *testing.T) {
 		"destructive-tool-not-gated",
 		"tool-name-collision",
 		"network-tool-no-allowlist",
+		"file-tool-no-path-confinement",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {

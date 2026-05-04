@@ -51,7 +51,7 @@ func init() {
 				if !ok {
 					continue
 				}
-				if hasURLConstraint(prop) {
+				if hasStringValueConstraint(prop) {
 					continue
 				}
 				ctx.Report(
@@ -72,18 +72,3 @@ func isURLPropertyName(key string) bool {
 	return ok
 }
 
-// hasURLConstraint returns true if propSchema has any of enum, pattern, or
-// const at the top level. format: "uri" is intentionally NOT treated as a
-// constraint — it validates URL syntax, not destination.
-func hasURLConstraint(propSchema map[string]any) bool {
-	if _, ok := propSchema["enum"]; ok {
-		return true
-	}
-	if _, ok := propSchema["pattern"]; ok {
-		return true
-	}
-	if _, ok := propSchema["const"]; ok {
-		return true
-	}
-	return false
-}

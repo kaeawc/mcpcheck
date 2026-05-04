@@ -1,0 +1,36 @@
+{
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Read the contents of a file by path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "write_log",
+      "description": "Append a line to a log file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file_path": { "type": "string" },
+          "line":      { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "list_dir",
+      "description": "List files in a directory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "directory": { "type": "string" }
+        }
+      }
+    }
+  ]
+}
