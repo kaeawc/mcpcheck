@@ -1,0 +1,50 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Fetch a user record.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "read_file_pattern",
+      "description": "Read a file under /var/data/ — confined by pattern.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^/var/data/[^/]+$"
+          }
+        }
+      }
+    },
+    {
+      "name": "read_known_log",
+      "description": "Read one of a fixed set of log files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "enum": ["/var/log/app.log", "/var/log/audit.log"]
+          }
+        }
+      }
+    },
+    {
+      "name": "list_known_dir",
+      "description": "List a single fixed directory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "directory": { "type": "string", "const": "/var/data" }
+        }
+      }
+    }
+  ]
+}
