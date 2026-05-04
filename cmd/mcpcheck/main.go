@@ -50,6 +50,7 @@ func run(path, format string) error {
 	for i := range set.Tools {
 		findings = append(findings, v2.Run(rules, &set.Tools[i])...)
 	}
+	findings = append(findings, v2.RunProject(rules, set)...)
 
 	switch format {
 	case "text":

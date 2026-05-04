@@ -1,0 +1,19 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Fetch a user by id.",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "fetch_org",
+      "description": "Fetch an org by id.",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "send_message",
+      "description": "Send a message.",
+      "inputSchema": { "type": "object" }
+    }
+  ]
+}

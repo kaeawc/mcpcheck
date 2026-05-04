@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kaeawc/mcpcheck/internal/mcpmodel"
 	_ "github.com/kaeawc/mcpcheck/internal/rules"
 	"github.com/kaeawc/mcpcheck/internal/scanner"
 	"github.com/kaeawc/mcpcheck/internal/v2"
@@ -18,6 +19,7 @@ func TestPositiveFixtures(t *testing.T) {
 		"tool-description-empty-or-truncated",
 		"tool-description-mentions-secret",
 		"destructive-tool-not-gated",
+		"tool-name-collision",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {
@@ -27,12 +29,7 @@ func TestPositiveFixtures(t *testing.T) {
 				t.Fatalf("load fixture: %v", err)
 			}
 			rule := findRule(t, ruleID)
-			var hits int
-			for i := range set.Tools {
-				findings := v2.Run([]*v2.Rule{rule}, &set.Tools[i])
-				hits += len(findings)
-			}
-			if hits == 0 {
+			if hits := runRule(rule, set); hits == 0 {
 				t.Fatalf("rule %q produced no findings on positive fixture", ruleID)
 			}
 		})
@@ -47,6 +44,7 @@ func TestNegativeFixtures(t *testing.T) {
 		"tool-description-empty-or-truncated",
 		"tool-description-mentions-secret",
 		"destructive-tool-not-gated",
+		"tool-name-collision",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {
@@ -56,14 +54,26 @@ func TestNegativeFixtures(t *testing.T) {
 				t.Fatalf("load fixture: %v", err)
 			}
 			rule := findRule(t, ruleID)
-			for i := range set.Tools {
-				if findings := v2.Run([]*v2.Rule{rule}, &set.Tools[i]); len(findings) > 0 {
-					t.Fatalf("rule %q reported on negative fixture tool %q: %+v",
-						ruleID, set.Tools[i].Name, findings)
-				}
+			if hits := runRule(rule, set); hits > 0 {
+				t.Fatalf("rule %q reported on negative fixture (%d findings)", ruleID, hits)
 			}
 		})
 	}
+}
+
+// runRule dispatches per-tool and project-scope phases as appropriate for
+// the rule's declared callbacks, returning the total finding count.
+func runRule(rule *v2.Rule, set *mcpmodel.ToolSet) int {
+	hits := 0
+	if rule.Implementation != nil {
+		for i := range set.Tools {
+			hits += len(v2.Run([]*v2.Rule{rule}, &set.Tools[i]))
+		}
+	}
+	if rule.ProjectImplementation != nil {
+		hits += len(v2.RunProject([]*v2.Rule{rule}, set))
+	}
+	return hits
 }
 
 func findRule(t *testing.T, id string) *v2.Rule {
