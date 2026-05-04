@@ -20,6 +20,7 @@ func TestPositiveFixtures(t *testing.T) {
 		"tool-description-mentions-secret",
 		"destructive-tool-not-gated",
 		"tool-name-collision",
+		"network-tool-no-allowlist",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {
@@ -45,6 +46,7 @@ func TestNegativeFixtures(t *testing.T) {
 		"tool-description-mentions-secret",
 		"destructive-tool-not-gated",
 		"tool-name-collision",
+		"network-tool-no-allowlist",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {

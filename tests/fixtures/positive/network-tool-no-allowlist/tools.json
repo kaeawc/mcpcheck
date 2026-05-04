@@ -1,0 +1,36 @@
+{
+  "tools": [
+    {
+      "name": "fetch_url",
+      "description": "Fetch the body of an HTTP URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "format": "uri" }
+        },
+        "required": ["url"]
+      }
+    },
+    {
+      "name": "post_webhook",
+      "description": "POST a payload to a webhook.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "webhook_url": { "type": "string" },
+          "body":        { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "ping_endpoint",
+      "description": "Ping a configured endpoint.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "endpoint": { "type": "string" }
+        }
+      }
+    }
+  ]
+}
