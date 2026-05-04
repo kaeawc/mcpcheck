@@ -2,11 +2,11 @@
 //
 // Usage:
 //
-//	mcpcheck [--format text|json] <tools.json>
+//	mcpcheck [--format text|json] <path>
 //
-// The MVP intake is a tools.json file (an MCP tools/list response or a bare
-// list of tool objects). Tree-sitter Python and TypeScript intakes will land
-// later as additional input forms.
+// `path` may be a tools.json (MCP tools/list response or bare list), a
+// single .py file, or a directory of Python sources. TypeScript intake
+// and a tree-sitter-backed Python intake will land as future PRs.
 package main
 
 import (
@@ -23,7 +23,8 @@ import (
 func main() {
 	format := flag.String("format", "text", "output format: text|json")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s [--format text|json] <tools.json>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [--format text|json] <path>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  path: .json (tools/list response), .py file, or directory of Python sources\n")
 	}
 	flag.Parse()
 
@@ -39,7 +40,7 @@ func main() {
 }
 
 func run(path, format string) error {
-	set, err := scanner.LoadToolsJSON(path)
+	set, err := scanner.Load(path)
 	if err != nil {
 		return err
 	}
