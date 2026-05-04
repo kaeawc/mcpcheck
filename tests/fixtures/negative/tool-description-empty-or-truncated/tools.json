@@ -1,0 +1,19 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Fetch a user by id.",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "send_message",
+      "description": "Post a message to a channel",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "ping",
+      "description": "ping the upstream",
+      "inputSchema": { "type": "object" }
+    }
+  ]
+}

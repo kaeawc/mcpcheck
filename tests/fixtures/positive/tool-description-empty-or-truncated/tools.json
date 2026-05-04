@@ -1,0 +1,28 @@
+{
+  "tools": [
+    {
+      "name": "ping_empty",
+      "description": "",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "ping_missing",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "ping_too_short",
+      "description": "tbd",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "ping_truncated_dots",
+      "description": "Send a ping to the configured upstream and...",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "ping_truncated_ellipsis",
+      "description": "Send a ping to the configured upstream and…",
+      "inputSchema": { "type": "object" }
+    }
+  ]
+}
