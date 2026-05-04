@@ -1,0 +1,53 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Fetch a user record.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "fetch_url_pattern",
+      "description": "Fetch a URL constrained to a single host via pattern.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "pattern": "^https://api\\.example\\.com/v1/"
+          }
+        }
+      }
+    },
+    {
+      "name": "fetch_url_enum",
+      "description": "Fetch a URL constrained by an enum of acceptable values.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "enum": [
+              "https://api.example.com/v1/users",
+              "https://api.example.com/v1/orgs"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "describe_app",
+      "description": "Returns app metadata; no URL parameters.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "app_id": { "type": "string" }
+        }
+      }
+    }
+  ]
+}
