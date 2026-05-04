@@ -24,7 +24,7 @@ func main() {
 	format := flag.String("format", "text", "output format: text|json|sarif")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s [--format text|json|sarif] <path>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  path: .json (tools/list response), .py file, or directory of Python sources\n")
+		fmt.Fprintf(os.Stderr, "  path: .json (tools/list response), .py / .ts / .tsx / .js / .mjs / .cjs file, or a directory\n")
 	}
 	flag.Parse()
 
