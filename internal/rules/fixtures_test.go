@@ -16,6 +16,7 @@ func TestPositiveFixtures(t *testing.T) {
 	cases := []string{
 		"tool-name-not-snake-case",
 		"tool-description-empty-or-truncated",
+		"tool-description-mentions-secret",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {
@@ -43,6 +44,7 @@ func TestNegativeFixtures(t *testing.T) {
 	cases := []string{
 		"tool-name-not-snake-case",
 		"tool-description-empty-or-truncated",
+		"tool-description-mentions-secret",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {

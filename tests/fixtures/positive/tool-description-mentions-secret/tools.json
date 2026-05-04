@@ -1,0 +1,24 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user_password",
+      "description": "Fetch a user record including the user's password hash.",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "set_api_key",
+      "description": "Configure the api_key used for outbound calls.",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "exchange_oauth_token",
+      "description": "Exchange a refresh_token for a fresh access_token.",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "describe_app",
+      "description": "Returns the bearer header used in subsequent calls.",
+      "inputSchema": { "type": "object" }
+    }
+  ]
+}
