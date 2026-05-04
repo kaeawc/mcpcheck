@@ -1,0 +1,24 @@
+{
+  "tools": [
+    {
+      "name": "search_web",
+      "description": "Search the web for a query and return the top results.",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "tokenize",
+      "description": "Tokenize input text with a fast tokenizer; useful for downstream embedding.",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "list_api_keys",
+      "description": "Lists configured api_keys by id only; values are never returned.",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "name": "passwordless_login",
+      "description": "Begin a passwordless login flow by emailing a magic link.",
+      "inputSchema": { "type": "object" }
+    }
+  ]
+}
