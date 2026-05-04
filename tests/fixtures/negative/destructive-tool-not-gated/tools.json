@@ -1,0 +1,49 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Fetch a user by id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "delete_user",
+      "description": "Delete the user with the given id; requires explicit confirmation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id":      { "type": "string" },
+          "confirm": { "type": "boolean" }
+        },
+        "required": ["id", "confirm"]
+      }
+    },
+    {
+      "name": "send_email",
+      "description": "Send an email; pass dry_run=true to preview without sending.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to":      { "type": "string" },
+          "subject": { "type": "string" },
+          "body":    { "type": "string" },
+          "dry_run": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "name": "list_users",
+      "description": "List configured users.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": { "type": "integer" }
+        }
+      }
+    }
+  ]
+}
