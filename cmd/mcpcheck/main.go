@@ -3,10 +3,14 @@
 // Usage:
 //
 //	mcpcheck [--format text|json|sarif] <path>
+//	mcpcheck --list-rules [--format text|json]
 //
 // `path` may be a tools.json (MCP tools/list response or bare list), a
-// single .py file, or a directory of Python sources. TypeScript intake
-// and a tree-sitter-backed Python intake will land as future PRs.
+// .py / .ts / .tsx / .js / .mjs / .cjs file, or a directory.
+//
+// `--list-rules` prints the registered rule set and exits without
+// running an analysis. Useful for documentation generators and CI
+// integrations that need to know what rules exist.
 package main
 
 import (
@@ -14,28 +18,54 @@ import (
 	"fmt"
 	"os"
 
-	_ "github.com/kaeawc/mcpcheck/internal/rules"
 	"github.com/kaeawc/mcpcheck/internal/output"
+	_ "github.com/kaeawc/mcpcheck/internal/rules"
 	"github.com/kaeawc/mcpcheck/internal/scanner"
 	"github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 func main() {
 	format := flag.String("format", "text", "output format: text|json|sarif")
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s [--format text|json|sarif] <path>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  path: .json (tools/list response), .py / .ts / .tsx / .js / .mjs / .cjs file, or a directory\n")
-	}
+	listRules := flag.Bool("list-rules", false, "list registered rules and exit")
+	flag.Usage = usage
 	flag.Parse()
 
+	if *listRules {
+		if err := writeRules(*format); err != nil {
+			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if flag.NArg() != 1 {
-		flag.Usage()
+		usage()
 		os.Exit(2)
 	}
 
 	if err := run(flag.Arg(0), *format); err != nil {
 		fmt.Fprintln(os.Stderr, "mcpcheck:", err)
 		os.Exit(1)
+	}
+}
+
+func usage() {
+	fmt.Fprintf(os.Stderr, "usage: %s [--format text|json|sarif] <path>\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s --list-rules [--format text|json]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  path: .json (tools/list response), .py / .ts / .tsx / .js / .mjs / .cjs file, or a directory\n")
+}
+
+func writeRules(format string) error {
+	rules := v2.All()
+	switch format {
+	case "text":
+		return output.WriteRulesText(os.Stdout, rules)
+	case "json":
+		return output.WriteRulesJSON(os.Stdout, rules)
+	case "sarif":
+		return fmt.Errorf("--format sarif is not supported with --list-rules (use json or text)")
+	default:
+		return fmt.Errorf("unknown --format %q (want text|json)", format)
 	}
 }
 
