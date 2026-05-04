@@ -1,0 +1,44 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Examples use placeholder values.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id":    { "type": "string" },
+          "email": { "type": "string" }
+        },
+        "examples": [
+          { "id": "u-1", "email": "user@example.com" },
+          { "id": "u-2", "email": "alice@example.org" }
+        ]
+      }
+    },
+    {
+      "name": "verify_identity",
+      "description": "Examples use universally-fake SSN/phone.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ssn":   { "type": "string" },
+          "phone": { "type": "string" }
+        },
+        "examples": [
+          { "ssn": "123-45-6789", "phone": "555-867-5309" },
+          { "ssn": "000-00-0000", "phone": "415-555-0100" }
+        ]
+      }
+    },
+    {
+      "name": "no_examples",
+      "description": "Tools without examples are out of scope.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        }
+      }
+    }
+  ]
+}

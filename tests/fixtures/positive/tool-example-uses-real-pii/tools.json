@@ -1,0 +1,31 @@
+{
+  "tools": [
+    {
+      "name": "fetch_user",
+      "description": "Fetch a user by id; example uses a real-looking email.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id":    { "type": "string" },
+          "email": { "type": "string" }
+        },
+        "examples": [
+          { "id": "u-1", "email": "alice@anthropic.com" }
+        ]
+      }
+    },
+    {
+      "name": "verify_identity",
+      "description": "Verify identity with SSN; example has a real-looking number.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ssn": { "type": "string" }
+        },
+        "examples": [
+          { "ssn": "555-12-3456" }
+        ]
+      }
+    }
+  ]
+}
