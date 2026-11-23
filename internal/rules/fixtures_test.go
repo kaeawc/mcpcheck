@@ -25,6 +25,16 @@ func TestPositiveFixtures(t *testing.T) {
 		"tool-example-fails-schema",
 		"tool-example-uses-real-pii",
 		"tool-schema-required-references-undefined-property",
+		"server-stdout-not-protocol",
+		"server-jsonrpc-malformed",
+		"server-protocol-version-unsupported",
+		"server-lifecycle-nonconformant",
+		"server-transport-nonconformant",
+		"server-tools-pagination-broken",
+		"tool-name-invalid",
+		"tool-input-schema-invalid",
+		"tool-output-schema-invalid",
+		"tool-annotations-inconsistent",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {
@@ -55,6 +65,16 @@ func TestNegativeFixtures(t *testing.T) {
 		"tool-example-fails-schema",
 		"tool-example-uses-real-pii",
 		"tool-schema-required-references-undefined-property",
+		"server-stdout-not-protocol",
+		"server-jsonrpc-malformed",
+		"server-protocol-version-unsupported",
+		"server-lifecycle-nonconformant",
+		"server-transport-nonconformant",
+		"server-tools-pagination-broken",
+		"tool-name-invalid",
+		"tool-input-schema-invalid",
+		"tool-output-schema-invalid",
+		"tool-annotations-inconsistent",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {

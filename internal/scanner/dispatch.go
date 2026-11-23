@@ -49,3 +49,12 @@ func dirHasExtension(dir, ext string) (bool, error) {
 	}
 	return false, nil
 }
+
+// SupportedPatterns lists the tool-registration shapes the source
+// intakes recognize, for feedback when a scan finds nothing.
+func SupportedPatterns() []string {
+	return []string{
+		"Python:     @mcp.tool / @mcp.tool(name=..., description=...) on a def (FastMCP, official SDK and fastmcp 2.x)",
+		"TypeScript: server.tool(\"name\", \"description\", ...) (@modelcontextprotocol/sdk)",
+	}
+}

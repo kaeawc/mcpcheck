@@ -2,34 +2,36 @@
 //
 // Usage:
 //
-//	mcpcheck [--format text|json|sarif] <path>
-//	mcpcheck [--format text|json|sarif] --live "<command>"
-//	mcpcheck [--format text|json|sarif] --live "<command>" <path>
+//	mcpcheck [flags] <path>
+//	mcpcheck [flags] --live "<command>" [<path>]
+//	mcpcheck [flags] --url <url> [<path>]
 //	mcpcheck --list-rules [--format text|json]
 //
 // `path` may be a tools.json (MCP tools/list response or bare list), a
-// .py / .ts / .tsx / .js / .mjs / .cjs file, or a directory.
+// Python / TypeScript / JavaScript / Go / Rust source file, or a
+// directory.
 //
-// `--live "<command>"` boots the given command as an MCP subprocess,
-// runs the initialize / tools/list handshake over stdio, and
-// validates whatever tools the server actually advertises at runtime.
+// `--live "<command>"` boots the command as an MCP server over stdio;
+// `--url` connects to one over Streamable HTTP or legacy HTTP+SSE. Either
+// runs the initialize / tools/list handshake and validates the tools the
+// server actually advertises, plus how it behaves on the wire.
 //
-// Providing both `--live` and `<path>` runs both intakes plus a
+// Providing a live server and a `<path>` runs both intakes plus a
 // comparison phase that flags tools advertised by one but not the
 // other (catches dynamic registration drift).
-//
-// `--list-rules` prints the registered rule set and exits without
-// running an analysis.
 package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
-	"strings"
 	"time"
 
+	"github.com/kaeawc/mcpcheck/internal/mcpclient"
 	"github.com/kaeawc/mcpcheck/internal/mcpmodel"
 	"github.com/kaeawc/mcpcheck/internal/output"
 	_ "github.com/kaeawc/mcpcheck/internal/rules"
@@ -37,81 +39,193 @@ import (
 	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
-func main() {
-	format := flag.String("format", "text", "output format: text|json|sarif")
-	listRules := flag.Bool("list-rules", false, "list registered rules and exit")
-	live := flag.String("live", "", "boot the given command as an MCP subprocess and run tools/list")
-	liveTimeout := flag.Duration("live-timeout", 30*time.Second, "deadline for the live-mode handshake")
-	flag.Usage = usage
-	flag.Parse()
+// version is overridden at build time with -ldflags "-X main.version=...".
+var version = "dev"
 
-	if *listRules {
-		if err := writeRules(*format); err != nil {
-			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
-			os.Exit(1)
-		}
-		return
+type config struct {
+	format          string
+	listRules       bool
+	live            string
+	url             string
+	transport       string
+	headers         headerFlag
+	protocolVersion string
+	timeout         time.Duration
+	trace           bool
+	verbose         bool
+	quiet           bool
+	save            string
+	path            string
+}
+
+func parseFlags(args []string) (*config, error) {
+	c := &config{}
+	fs := flag.NewFlagSet("mcpcheck", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&c.format, "format", "text", "output format: text|json|sarif")
+	fs.BoolVar(&c.listRules, "list-rules", false, "list registered rules and exit")
+	fs.StringVar(&c.live, "live", "", "run the given command as an MCP server over stdio")
+	fs.StringVar(&c.url, "url", "", "connect to an MCP server over HTTP at this URL")
+	fs.StringVar(&c.transport, "transport", mcpclient.TransportAuto, "HTTP transport: auto|streamable-http|sse")
+	fs.Var(&c.headers, "header", "HTTP header \"Name: value\" sent with every request (repeatable)")
+	fs.StringVar(&c.protocolVersion, "protocol-version", "", "protocol version to offer (default: latest, "+mcpclient.LatestProtocolVersion+")")
+	fs.DurationVar(&c.timeout, "live-timeout", 30*time.Second, "deadline for the live session")
+	fs.BoolVar(&c.trace, "trace", false, "log every JSON-RPC message to stderr")
+	fs.BoolVar(&c.verbose, "verbose", false, "stream the stdio server's stderr")
+	fs.BoolVar(&c.quiet, "quiet", false, "suppress the summary on stderr")
+	fs.StringVar(&c.save, "save", "", "write the live session (tools + server observations) to this JSON file")
+	if err := fs.Parse(args); err != nil {
+		return nil, err
 	}
-
-	hasLive := *live != ""
-	hasPath := flag.NArg() == 1
-
-	if !hasLive && !hasPath {
-		usage()
-		os.Exit(2)
+	if fs.NArg() > 1 {
+		return nil, fmt.Errorf("expected at most one path, got %d", fs.NArg())
 	}
-	if flag.NArg() > 1 {
-		usage()
-		os.Exit(2)
+	c.path = fs.Arg(0)
+	return c, c.validate()
+}
+
+func (c *config) validate() error {
+	if c.listRules {
+		return nil
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), *liveTimeout)
-	defer cancel()
-
-	staticSet, liveSet, err := loadSets(ctx, hasPath, hasLive, *live)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "mcpcheck:", err)
-		os.Exit(1)
+	hasLive := c.live != "" || c.url != ""
+	switch {
+	case c.live != "" && c.url != "":
+		return fmt.Errorf("--live and --url are mutually exclusive")
+	case !hasLive && c.path == "":
+		return fmt.Errorf("nothing to check: give a path, --live, or --url")
+	case c.save != "" && !hasLive:
+		return fmt.Errorf("--save records a live session; use it with --live or --url")
 	}
+	warnUnknownVersion(c.protocolVersion)
+	return nil
+}
 
-	if err := analyzeAll(staticSet, liveSet, *format); err != nil {
-		fmt.Fprintln(os.Stderr, "mcpcheck:", err)
-		os.Exit(1)
+func warnUnknownVersion(v string) {
+	if v != "" && !mcpclient.IsKnownProtocolVersion(v) {
+		fmt.Fprintf(os.Stderr, "mcpcheck: note: %q is not a published protocol version; offering it anyway\n", v)
 	}
 }
 
-// loadSets loads the static set from the positional path and the live set
-// from the --live command, each only when requested.
-func loadSets(ctx context.Context, hasPath, hasLive bool, live string) (staticSet, liveSet *mcpmodel.ToolSet, err error) {
-	if hasPath {
-		if staticSet, err = scanner.Load(flag.Arg(0)); err != nil {
+func main() {
+	c, err := parseFlags(os.Args[1:])
+	if err != nil {
+		if !errors.Is(err, flag.ErrHelp) {
+			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
+		}
+		usage()
+		os.Exit(2)
+	}
+	os.Exit(run(c))
+}
+
+func run(c *config) int {
+	if c.listRules {
+		return report(writeRules(c.format))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	staticSet, liveSet, err := loadSets(ctx, c)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "mcpcheck:", err)
+		return 1
+	}
+	if c.save != "" {
+		if err := saveSession(c.save, liveSet); err != nil {
+			return report(err)
+		}
+	}
+	findings := analyze(staticSet, liveSet)
+	if err := writeFindings(c.format, findings); err != nil {
+		return report(err)
+	}
+	if !c.quiet {
+		writeSummary(os.Stderr, staticSet, liveSet, findings)
+	}
+	for _, f := range findings {
+		if f.Severity == v2.SevError {
+			return 1
+		}
+	}
+	return 0
+}
+
+func report(err error) int {
+	if err == nil {
+		return 0
+	}
+	fmt.Fprintln(os.Stderr, "mcpcheck:", err)
+	return 1
+}
+
+// loadSets loads the static set from the positional path and the live
+// set from --live or --url, each only when requested.
+func loadSets(ctx context.Context, c *config) (staticSet, liveSet *mcpmodel.ToolSet, err error) {
+	if c.path != "" {
+		if staticSet, err = scanner.Load(c.path); err != nil {
 			return nil, nil, err
 		}
 	}
-	if hasLive {
-		if liveSet, err = loadLiveCmd(ctx, live); err != nil {
+	if c.live != "" || c.url != "" {
+		opts, err := c.liveOptions()
+		if err != nil {
 			return nil, nil, err
+		}
+		if liveSet, err = scanner.LoadLive(ctx, opts); err != nil {
+			return nil, nil, fmt.Errorf("live session failed during %w", err)
 		}
 	}
 	return staticSet, liveSet, nil
 }
 
-// loadLiveCmd splits live by whitespace and runs the live intake. The
-// argv split is intentionally simplistic — quoted arguments and shell
-// features are not supported. Callers needing them can wrap in
-// `sh -c "..."`.
-func loadLiveCmd(ctx context.Context, live string) (*mcpmodel.ToolSet, error) {
-	parts := strings.Fields(live)
-	if len(parts) == 0 {
-		return nil, fmt.Errorf("--live: empty command")
+func (c *config) liveOptions() (scanner.LiveOptions, error) {
+	opts := scanner.LiveOptions{
+		URL:             c.url,
+		Transport:       c.transport,
+		Header:          http.Header(c.headers),
+		ProtocolVersion: c.protocolVersion,
+		ClientVersion:   version,
 	}
-	return scanner.LoadLive(ctx, parts)
+	if c.live != "" {
+		argv, err := splitCommand(c.live)
+		if err != nil {
+			return opts, fmt.Errorf("--live: %w", err)
+		}
+		opts.Command = argv
+	}
+	if c.trace {
+		opts.Trace = os.Stderr
+	}
+	if c.verbose {
+		opts.ServerStderr = os.Stderr
+	}
+	return opts, nil
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: %s [--format text|json|sarif] <path>\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s --list-rules [--format text|json]\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "  path: .json (tools/list response), .py / .ts / .tsx / .js / .mjs / .cjs file, or a directory\n")
+	fmt.Fprintf(os.Stderr, `usage: mcpcheck [flags] <path>
+       mcpcheck [flags] --live "<command>" [<path>]
+       mcpcheck [flags] --url <url> [<path>]
+       mcpcheck --list-rules [--format text|json]
+
+  path      tools.json (tools/list response), a .py/.ts/.tsx/.js/.mjs/.cjs/.go/.rs
+            file, or a directory (languages are detected per file)
+  --live    run a command as an MCP server over stdio, e.g. --live "uv run server.py"
+  --url     connect over HTTP; Streamable HTTP with automatic fallback to the
+            legacy HTTP+SSE transport, e.g. --url http://localhost:8000/mcp
+
+flags:
+  --format text|json|sarif     output format (default text)
+  --transport auto|streamable-http|sse
+  --header "Name: value"       HTTP header for every request (repeatable)
+  --protocol-version V         version to offer (default %s)
+  --live-timeout D             deadline for the live session (default 30s)
+  --trace                      log every JSON-RPC message to stderr
+  --verbose                    stream the stdio server's stderr
+  --quiet                      no summary on stderr
+  --save FILE                  record the live session; re-check it later with mcpcheck FILE
+`, mcpclient.LatestProtocolVersion)
 }
 
 func writeRules(format string) error {
@@ -128,17 +242,12 @@ func writeRules(format string) error {
 	}
 }
 
-// analyzeAll runs every registered rule against whichever tool sets are
-// non-nil and emits the combined findings in the requested format.
-//
-// Per-tool and project-scope rules run on each non-nil set. Comparison
-// rules run only when both sets are present. Source-coordinate context
-// is preserved per-finding so callers can distinguish static and live
-// findings by file path even when the rule itself is set-agnostic.
-func analyzeAll(static, live *mcpmodel.ToolSet, format string) error {
+// analyze runs every registered rule against whichever tool sets are
+// non-nil. Per-tool and project-scope rules run on each set; comparison
+// rules run only when both are present.
+func analyze(static, live *mcpmodel.ToolSet) []v2.Finding {
 	rules := v2.All()
 	var findings []v2.Finding
-
 	for _, set := range []*mcpmodel.ToolSet{static, live} {
 		if set == nil {
 			continue
@@ -148,21 +257,10 @@ func analyzeAll(static, live *mcpmodel.ToolSet, format string) error {
 		}
 		findings = append(findings, v2.RunProject(rules, set)...)
 	}
-
 	if static != nil && live != nil {
 		findings = append(findings, v2.RunComparison(rules, static, live)...)
 	}
-
-	if err := writeFindings(format, findings); err != nil {
-		return err
-	}
-
-	for _, f := range findings {
-		if f.Severity == v2.SevError {
-			os.Exit(1)
-		}
-	}
-	return nil
+	return findings
 }
 
 func writeFindings(format string, findings []v2.Finding) error {
@@ -176,4 +274,16 @@ func writeFindings(format string, findings []v2.Finding) error {
 	default:
 		return fmt.Errorf("unknown --format %q (want text|json|sarif)", format)
 	}
+}
+
+func saveSession(path string, set *mcpmodel.ToolSet) error {
+	f, err := os.Create(path) // #nosec G304 -- the user names the output file
+	if err != nil {
+		return fmt.Errorf("--save: %w", err)
+	}
+	if err := scanner.WriteSession(f, set); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("--save: %w", err)
+	}
+	return f.Close()
 }

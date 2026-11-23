@@ -4,185 +4,104 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"io"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
-// fakeServer drives the server side of an MCP stdio handshake against
-// the client's writes, emitting canned responses for initialize and
-// tools/list.
-type fakeServer struct {
-	tools  []map[string]any
-	failOn string // "initialize" or "tools/list" to inject a JSON-RPC error
+// TestMain lets the test binary double as a stdio MCP server, so LoadLive
+// is exercised against a real subprocess without any other toolchain.
+func TestMain(m *testing.M) {
+	switch os.Getenv("MCPCHECK_TEST_SERVER") {
+	case "":
+		os.Exit(m.Run())
+	case "ok":
+		serveStdio()
+		os.Exit(0)
+	case "crash":
+		fmt.Fprintln(os.Stderr, "Traceback: ImportError: no module named mcp")
+		os.Exit(3)
+	}
 }
 
-func (s *fakeServer) run(ctx context.Context, in io.Reader, out io.Writer) error {
-	r := bufio.NewReader(in)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+func serveStdio() {
+	fmt.Fprintln(os.Stderr, "server log line on stderr is fine")
+	in := bufio.NewScanner(os.Stdin)
+	for in.Scan() {
+		var m struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
 		}
-		line, err := r.ReadBytes('\n')
-		if err != nil {
-			return err // EOF when client closes stdin
+		if json.Unmarshal(in.Bytes(), &m) != nil || len(m.ID) == 0 {
+			continue
 		}
-		var msg jsonrpcMessage
-		if err := json.Unmarshal(line, &msg); err != nil {
-			return err
-		}
-		switch msg.Method {
+		var result string
+		switch m.Method {
 		case "initialize":
-			if s.failOn == "initialize" {
-				if err := writeError(out, msg.ID, -32603, "boom"); err != nil {
-					return err
-				}
-				continue
-			}
-			result := map[string]any{
-				"protocolVersion": "2024-11-05",
-				"capabilities":    map[string]any{},
-				"serverInfo":      map[string]any{"name": "fake", "version": "0"},
-			}
-			if err := writeResult(out, msg.ID, result); err != nil {
-				return err
-			}
-		case "notifications/initialized":
-			// no response expected
+			result = `{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"helper","version":"0.0.1"}}`
 		case "tools/list":
-			if s.failOn == "tools/list" {
-				if err := writeError(out, msg.ID, -32603, "boom"); err != nil {
-					return err
-				}
-				continue
-			}
-			result := map[string]any{"tools": s.tools}
-			if err := writeResult(out, msg.ID, result); err != nil {
-				return err
-			}
+			result = `{"tools":[{"name":"get_weather","description":"Get the current weather for a city.","inputSchema":{"type":"object"}}]}`
+		default:
+			continue
 		}
+		fmt.Printf(`{"jsonrpc":"2.0","id":%s,"result":%s}`+"\n", m.ID, result)
 	}
 }
 
-func writeResult(out io.Writer, id json.RawMessage, result any) error {
-	raw, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-	msg := jsonrpcMessage{JSONRPC: "2.0", ID: id, Result: raw}
-	return writeMessage(out, msg)
-}
-
-func writeError(out io.Writer, id json.RawMessage, code int, message string) error {
-	msg := jsonrpcMessage{JSONRPC: "2.0", ID: id, Error: &jsonrpcError{Code: code, Message: message}}
-	return writeMessage(out, msg)
-}
-
-// runWithFakeServer wires the client (FetchToolsLive) to a fakeServer
-// over two pipes and returns whatever FetchToolsLive returned, projected
-// to a flat liveTool view that drops InputSchema (we just record
-// presence) so tests can assert with simple equality.
-func runWithFakeServer(t *testing.T, srv *fakeServer) ([]liveTool, error) {
+func helperCommand(t *testing.T, mode string) LiveOptions {
 	t.Helper()
-	clientToServerR, clientToServerW := io.Pipe()
-	serverToClientR, serverToClientW := io.Pipe()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	serverDone := make(chan error, 1)
-	go func() {
-		serverDone <- srv.run(ctx, clientToServerR, serverToClientW)
-		serverToClientW.Close()
-	}()
-
-	tools, err := FetchToolsLive(ctx, clientToServerW, serverToClientR)
-	clientToServerW.Close()
-	<-serverDone
-
-	out := make([]liveTool, len(tools))
-	for i, tool := range tools {
-		out[i] = liveTool{Name: tool.Name, Description: tool.Description, HasSchema: tool.InputSchema != nil}
-	}
-	return out, err
-}
-
-type liveTool struct {
-	Name        string
-	Description string
-	HasSchema   bool
-}
-
-func TestFetchToolsLive_HappyPath(t *testing.T) {
-	srv := &fakeServer{
-		tools: []map[string]any{
-			{
-				"name":        "fetch_user",
-				"description": "Fetch a user by id.",
-				"inputSchema": map[string]any{"type": "object"},
-			},
-			{
-				"name":        "send_message",
-				"description": "Post a message to a channel.",
-				"inputSchema": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"body": map[string]any{"type": "string"},
-					},
-				},
-			},
-		},
-	}
-	tools, err := runWithFakeServer(t, srv)
+	t.Setenv("MCPCHECK_TEST_SERVER", mode)
+	exe, err := os.Executable()
 	if err != nil {
-		t.Fatalf("FetchToolsLive: %v", err)
+		t.Fatal(err)
 	}
-	want := []liveTool{
-		{Name: "fetch_user", Description: "Fetch a user by id.", HasSchema: true},
-		{Name: "send_message", Description: "Post a message to a channel.", HasSchema: true},
+	return LiveOptions{Command: []string{exe, "-test.run=^$"}}
+}
+
+func TestLoadLiveStdioSubprocess(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	set, err := LoadLive(ctx, helperCommand(t, "ok"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(tools) != len(want) {
-		t.Fatalf("got %d tools, want %d: %+v", len(tools), len(want), tools)
+	if len(set.Tools) != 1 || set.Tools[0].Name != "get_weather" {
+		t.Fatalf("tools = %+v", set.Tools)
 	}
-	for i, w := range want {
-		if tools[i] != w {
-			t.Errorf("tools[%d] = %+v, want %+v", i, tools[i], w)
+	s := set.Server
+	if s.Transport != "stdio" || s.Name != "helper" || s.ProtocolVersion != "2025-03-26" || len(s.Violations) != 0 {
+		t.Errorf("server = %+v", s)
+	}
+}
+
+func TestLoadLiveReportsCrash(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := LoadLive(ctx, helperCommand(t, "crash"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, want := range []string{"initialize:", "exited with status 3", "ImportError: no module named mcp"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error lacks %q:\n%v", want, err)
 		}
 	}
 }
 
-func TestFetchToolsLive_InitializeError(t *testing.T) {
-	srv := &fakeServer{failOn: "initialize"}
-	_, err := runWithFakeServer(t, srv)
-	if err == nil {
-		t.Fatal("expected error when server rejects initialize")
-	}
-	if !strings.Contains(err.Error(), "initialize") {
-		t.Errorf("error should mention initialize phase: %v", err)
+func TestLoadLiveMissingBinary(t *testing.T) {
+	_, err := LoadLive(context.Background(), LiveOptions{Command: []string{"definitely-not-an-mcp-server-binary"}})
+	if err == nil || !strings.Contains(err.Error(), "start definitely-not-an-mcp-server-binary") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
-func TestFetchToolsLive_ToolsListError(t *testing.T) {
-	srv := &fakeServer{failOn: "tools/list"}
-	_, err := runWithFakeServer(t, srv)
-	if err == nil {
-		t.Fatal("expected error when server rejects tools/list")
+func TestLoadLiveRequiresExactlyOneTarget(t *testing.T) {
+	if _, err := LoadLive(context.Background(), LiveOptions{}); err == nil {
+		t.Error("expected error with no target")
 	}
-	if !strings.Contains(err.Error(), "tools/list") {
-		t.Errorf("error should mention tools/list phase: %v", err)
-	}
-}
-
-func TestFetchToolsLive_EmptyToolList(t *testing.T) {
-	srv := &fakeServer{tools: nil}
-	tools, err := runWithFakeServer(t, srv)
-	if err != nil {
-		t.Fatalf("FetchToolsLive: %v", err)
-	}
-	if len(tools) != 0 {
-		t.Errorf("expected empty list, got %+v", tools)
+	if _, err := LoadLive(context.Background(), LiveOptions{Command: []string{"x"}, URL: "http://x"}); err == nil {
+		t.Error("expected error with two targets")
 	}
 }

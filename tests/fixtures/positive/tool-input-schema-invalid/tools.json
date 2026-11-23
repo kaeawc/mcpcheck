@@ -1,0 +1,30 @@
+{
+  "tools": [
+    {
+      "name": "no_schema",
+      "description": "Has no input schema at all."
+    },
+    {
+      "name": "array_schema",
+      "description": "Get the current weather for a city.",
+      "inputSchema": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "untyped",
+      "description": "Get the current weather for a city.",
+      "inputSchema": {
+        "properties": {}
+      }
+    },
+    {
+      "name": "string_schema",
+      "description": "Get the current weather for a city.",
+      "inputSchema": "object"
+    }
+  ]
+}
