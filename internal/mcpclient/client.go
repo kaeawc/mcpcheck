@@ -58,6 +58,39 @@ type Options struct {
 	ClientVersion   string
 	// ProbeTimeout bounds the server/discover probe; zero means 5s.
 	ProbeTimeout time.Duration
+	// ClientCapabilities is declared to the server (see
+	// ParseClientCapabilities). Some servers register extra tools for
+	// clients that support roots, sampling, or elicitation.
+	ClientCapabilities map[string]any
+}
+
+// clientCapabilityValues are the capability objects --client-capabilities
+// can declare.
+var clientCapabilityValues = map[string]any{
+	"roots":       map[string]any{"listChanged": false},
+	"sampling":    map[string]any{},
+	"elicitation": map[string]any{},
+}
+
+// ParseClientCapabilities turns "roots,sampling" or "all" into the
+// capabilities object sent to the server.
+func ParseClientCapabilities(list string) (map[string]any, error) {
+	out := map[string]any{}
+	for _, name := range strings.Split(list, ",") {
+		name = strings.TrimSpace(name)
+		switch {
+		case name == "":
+		case name == "all":
+			for k, v := range clientCapabilityValues {
+				out[k] = v
+			}
+		case clientCapabilityValues[name] != nil:
+			out[name] = clientCapabilityValues[name]
+		default:
+			return nil, fmt.Errorf("unknown client capability %q (want roots, sampling, elicitation, or all)", name)
+		}
+	}
+	return out, nil
 }
 
 type client struct {
@@ -86,6 +119,7 @@ func FetchTools(ctx context.Context, t Transport, rec *Recorder, endpoint string
 	}
 	c := &client{t: t, rec: rec, opts: opts, abandoned: map[string]bool{},
 		server: &mcpmodel.Server{Endpoint: endpoint}}
+	c.server.ClientCapabilities = opts.ClientCapabilities
 	tools, err := c.run(ctx)
 	c.server.Transport = t.Name()
 	rec.apply(c.server)
@@ -138,7 +172,7 @@ func (c *client) initialize(ctx context.Context, offered string) error {
 	c.server.OfferedProtocolVersion = offered
 	raw, err := c.call(ctx, "initialize", map[string]any{
 		"protocolVersion": offered,
-		"capabilities":    map[string]any{},
+		"capabilities":    c.capabilities(),
 		"clientInfo":      c.clientInfo(),
 	})
 	if err != nil {
@@ -165,6 +199,13 @@ func (c *client) initialize(ctx context.Context, offered string) error {
 		c.setTransportVersion(s.ProtocolVersion)
 	}
 	return nil
+}
+
+func (c *client) capabilities() map[string]any {
+	if c.opts.ClientCapabilities == nil {
+		return map[string]any{}
+	}
+	return c.opts.ClientCapabilities
 }
 
 func (c *client) clientInfo() map[string]any {
@@ -354,15 +395,36 @@ func (c *client) answer(ctx context.Context, m Message) {
 			"server sent a %s request under protocol %s; modern servers must not send requests (use InputRequiredResult instead)", m.Method, c.server.ProtocolVersion)
 	}
 	reply := Message{JSONRPC: "2.0", ID: m.ID}
-	switch m.Method {
-	case "ping":
-		reply.Result = json.RawMessage("{}")
-	default:
-		c.rec.Violation(mcpmodel.ViolationLifecycle,
-			"server sent a %s request although the client declared no capabilities that allow it", m.Method)
-		reply.Error = &RPCError{Code: -32601, Message: "mcpcheck does not support " + m.Method}
-	}
+	reply.Result, reply.Error = c.reply(m.Method)
 	_ = c.t.Send(ctx, reply)
+}
+
+// serverRequestCapability names the client capability each
+// server-initiated request needs.
+var serverRequestCapability = map[string]string{
+	"roots/list":             "roots",
+	"sampling/createMessage": "sampling",
+	"elicitation/create":     "elicitation",
+}
+
+// reply answers a server request as a client that lists no roots,
+// declines elicitation, and can't sample.
+func (c *client) reply(method string) (json.RawMessage, *RPCError) {
+	if method == "ping" {
+		return json.RawMessage("{}"), nil
+	}
+	if capName, ok := serverRequestCapability[method]; !ok || c.capabilities()[capName] == nil {
+		c.rec.Violation(mcpmodel.ViolationLifecycle,
+			"server sent a %s request although the client did not declare a capability that allows it", method)
+		return nil, &RPCError{Code: -32601, Message: "mcpcheck does not support " + method}
+	}
+	switch method {
+	case "roots/list":
+		return json.RawMessage(`{"roots":[]}`), nil
+	case "elicitation/create":
+		return json.RawMessage(`{"action":"decline"}`), nil
+	}
+	return nil, &RPCError{Code: -32603, Message: "mcpcheck declares sampling only to discover tools; it cannot run completions"}
 }
 
 // explain decorates a session failure with the step that failed, a hint

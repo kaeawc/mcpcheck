@@ -40,6 +40,8 @@ type LiveOptions struct {
 	ProtocolVersion string
 	// ClientVersion is reported in clientInfo.
 	ClientVersion string
+	// ClientCapabilities is declared to the server.
+	ClientCapabilities map[string]any
 
 	// Trace, when non-nil, receives a log of every wire message.
 	Trace io.Writer
@@ -61,9 +63,10 @@ func LoadLive(ctx context.Context, opts LiveOptions) (*mcpmodel.ToolSet, error) 
 	}
 	defer t.Close()
 	return mcpclient.FetchTools(ctx, t, rec, endpoint, mcpclient.Options{
-		ProtocolVersion: opts.ProtocolVersion,
-		ClientName:      "mcpcheck",
-		ClientVersion:   opts.ClientVersion,
+		ProtocolVersion:    opts.ProtocolVersion,
+		ClientName:         "mcpcheck",
+		ClientVersion:      opts.ClientVersion,
+		ClientCapabilities: opts.ClientCapabilities,
 	})
 }
 

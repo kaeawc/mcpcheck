@@ -3,6 +3,7 @@ package scanner
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func parseJSONish(t *testing.T, src string, l lang) any {
@@ -90,8 +91,38 @@ func TestLiteralParserChains(t *testing.T) {
 func TestEnclosingOpen(t *testing.T) {
 	src := `x = [{"a": "}", "inputSchema": {}}, f("inputSchema")]`
 	targets := []int{17, 41}
-	got := enclosingOpen(src, langPython, '{', targets)
+	got := enclosingOpen(src, langPython, targets)
 	if got[0] != 5 || got[1] != -1 {
 		t.Errorf("got %v", got)
+	}
+}
+
+// TestLiteralParserTerminates guards against loops that stop making
+// progress on ';' or stray closers.
+func TestLiteralParserTerminates(t *testing.T) {
+	inputs := []struct {
+		src  string
+		lang lang
+	}{
+		{"[0; 4]", langRust},
+		{"{ let a = 1; a }", langRust},
+		{"f({ x; y })", langRust},
+		{"{ a: string; b: number }", langJS},
+		{"type T = { a: string; b?: number[] }; const x = {", langJS},
+		{"([)]", langJS},
+		{"{ 'a': [1, 2; ", langPython},
+	}
+	for _, in := range inputs {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			newLitParser(in.src, 0, in.lang).value()
+			enclosingOpen(in.src, in.lang, []int{len(in.src) / 2})
+		}()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("parser did not terminate on %q", in.src)
+		}
 	}
 }

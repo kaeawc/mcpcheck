@@ -43,6 +43,7 @@ var pyFieldKeywords = map[string]string{
 // the parameters plus the offset where the function body starts.
 func pyParams(src string, open int) ([]pyParam, int) {
 	p := newLitParser(src, open+1, langPython)
+	p.depth = 1
 	var params []pyParam
 	for {
 		p.ws()

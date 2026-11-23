@@ -255,3 +255,52 @@ func TestStdioLSPFramingAndBatches(t *testing.T) {
 		t.Errorf("violations: %+v", set.Server.Violations)
 	}
 }
+
+func TestClientCapabilitiesAnswerServerRequests(t *testing.T) {
+	caps, err := ParseClientCapabilities("roots, elicitation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseClientCapabilities("telepathy"); err == nil {
+		t.Error("unknown capability accepted")
+	}
+	replyCh := make(chan Message, 3)
+	srv := &standard{tools: []map[string]any{weatherTool}}
+	h := func(m Message) []string {
+		switch {
+		case m.Method == "notifications/initialized":
+			return []string{
+				`{"jsonrpc":"2.0","id":"r1","method":"roots/list"}`,
+				`{"jsonrpc":"2.0","id":"r2","method":"elicitation/create","params":{}}`,
+				`{"jsonrpc":"2.0","id":"r3","method":"sampling/createMessage","params":{}}`,
+			}
+		case m.IsResponse():
+			replyCh <- m
+			return nil
+		}
+		return srv.handle(m)
+	}
+	set, err := fetchStdioWith(t, h, NewRecorder(nil), Options{ProtocolVersion: LatestLegacyProtocolVersion, ClientCapabilities: caps})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replies := map[string]string{}
+	for len(replies) < 3 {
+		select {
+		case m := <-replyCh:
+			raw, _ := json.Marshal(m)
+			replies[string(m.ID)] = string(raw)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("got only %d replies: %v", len(replies), replies)
+		}
+	}
+	if !strings.Contains(replies[`"r1"`], `"roots":[]`) || !strings.Contains(replies[`"r2"`], `"decline"`) || !strings.Contains(replies[`"r3"`], "-32601") {
+		t.Errorf("replies: %v", replies)
+	}
+	if init := srv.received()[0]; !strings.Contains(string(init.Params), `"roots":{"listChanged":false}`) {
+		t.Errorf("initialize params: %s", init.Params)
+	}
+	if v := violations(set, mcpmodel.ViolationLifecycle); len(v) != 1 || !strings.Contains(v[0], "sampling/createMessage") {
+		t.Errorf("violations: %q", v)
+	}
+}

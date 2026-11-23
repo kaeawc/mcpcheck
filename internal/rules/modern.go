@@ -32,6 +32,11 @@ func init() {
 			if s == nil || s.LegacyFallback == "" {
 				return
 			}
+			if s.Transport == "sse" {
+				pc.Report("connected over the deprecated HTTP+SSE transport (2024-11-05), which only carries the legacy protocol; " +
+					"serve Streamable HTTP so clients that implement only protocol 2026-07-28 can connect")
+				return
+			}
 			pc.Report(fmt.Sprintf(
 				"server only speaks the legacy protocol (%s; negotiated %s via initialize); current SDKs serve both eras — "+
 					"TypeScript @modelcontextprotocol/server v2, Python mcp 2.x / fastmcp, rmcp, mcp-go",

@@ -57,7 +57,7 @@ func init() {
 		ID:             "tool-annotations-inconsistent",
 		Category:       v2.CatProtocol,
 		Severity:       v2.SevWarning,
-		Description:    "Tool annotations must use the spec's field types and must not contradict each other or the tool's name.",
+		Description:    "Tool annotations must use the spec's field types and must not contradict the tool's name (e.g. readOnlyHint on delete_*).",
 		Fix:            v2.FixNone,
 		Implementation: checkAnnotations,
 	})

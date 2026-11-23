@@ -61,21 +61,22 @@ func LoadPython(path string) (*mcpmodel.ToolSet, error) {
 
 // scanPython extracts tools from one source file.
 func scanPython(path, src string) []mcpmodel.Tool {
+	consts := pyConsts(src)
 	var tools []mcpmodel.Tool
 	for _, m := range pyToolDecoratorRe.FindAllStringIndex(src, -1) {
-		if t, ok := pyDecoratedTool(src, m[1]); ok {
+		if t, ok := pyDecoratedTool(src, m[1], consts); ok {
 			t.SourceFile, t.SourceLine = path, lineAt(src, m[0])
 			tools = append(tools, t)
 		}
 	}
-	tools = append(tools, pyAddTools(path, src)...)
+	tools = append(tools, pyAddTools(path, src, consts)...)
 	tools = append(tools, pyToolCalls(path, src)...)
 	return append(tools, objectLiteralTools(path, src, langPython, literalSchema)...)
 }
 
 // pyDecoratedTool reads the decorator arguments starting at pos (just
 // after `.tool`) and the function they decorate.
-func pyDecoratedTool(src string, pos int) (mcpmodel.Tool, bool) {
+func pyDecoratedTool(src string, pos int, consts pyConstMap) (mcpmodel.Tool, bool) {
 	p := newLitParser(src, pos, langPython)
 	p.wsInline()
 	var args []any
@@ -88,11 +89,11 @@ func pyDecoratedTool(src string, pos int) (mcpmodel.Tool, bool) {
 		return mcpmodel.Tool{}, false
 	}
 	if len(args) > 0 {
-		if name, ok := asString(args[0]); ok {
+		if name, ok := consts.str(args[0]); ok {
 			kwargs = withDefault(kwargs, "name", name)
 		}
 	}
-	return pyToolFromDef(src, def, kwargs), true
+	return pyToolFromDef(src, def, consts.resolveAll(kwargs)), true
 }
 
 func withDefault(m map[string]any, key string, v any) map[string]any {
@@ -138,16 +139,17 @@ func nextLine(src string, pos int) int {
 	return len(src)
 }
 
-// skipDecorator advances past a decorator line, including a bracketed
-// argument list that spans lines; it returns the start of that last line.
+// skipDecorator returns the start of the last line of the decorator at
+// pos, which spans several lines when its argument list does.
 func skipDecorator(src string, pos int) int {
 	end := nextLine(src, pos)
-	if open := strings.IndexByte(src[pos:end], '('); open >= 0 {
-		p := newLitParser(src, pos+open, langPython)
-		p.skipBalanced()
-		end = p.pos
+	open := strings.IndexByte(src[pos:end], '(')
+	if open < 0 {
+		return pos
 	}
-	return lineStart(src, end)
+	p := newLitParser(src, pos+open, langPython)
+	p.skipBalanced()
+	return lineStart(src, p.pos)
 }
 
 func lineStart(src string, pos int) int {
@@ -175,7 +177,7 @@ func pyToolFromDef(src string, def []int, kwargs map[string]any) mcpmodel.Tool {
 }
 
 // pyAddTools handles mcp.add_tool(func, name=..., description=...).
-func pyAddTools(path, src string) []mcpmodel.Tool {
+func pyAddTools(path, src string, consts pyConstMap) []mcpmodel.Tool {
 	defs := map[string][]int{}
 	for _, m := range pyDefRe.FindAllStringSubmatchIndex(src, -1) {
 		defs[src[m[2]:m[3]]] = m
@@ -187,7 +189,7 @@ func pyAddTools(path, src string) []mcpmodel.Tool {
 			continue
 		}
 		_, kwargs := newLitParser(src, m[0]+len(".add_tool"), langPython).callArgs()
-		t := pyToolFromDef(src, def, kwargs)
+		t := pyToolFromDef(src, def, consts.resolveAll(kwargs))
 		t.SourceFile, t.SourceLine = path, lineAt(src, m[0])
 		tools = append(tools, t)
 	}
@@ -211,6 +213,7 @@ func pyToolCalls(path, src string) []mcpmodel.Tool {
 // way inspect.cleandoc presents it.
 func pyDocstring(src string, pos int) string {
 	p := newLitParser(src, pos, langPython)
+	p.depth = 1 // the docstring may start on a later line
 	p.ws()
 	prefixed := isPyStringPrefix(string(p.peek())) && p.isQuote(p.peekNext())
 	if !p.isQuote(p.peek()) && !prefixed {
@@ -245,4 +248,73 @@ func cleandoc(doc string) string {
 		lines[i] = strings.TrimRight(lines[i], " ")
 	}
 	return strings.Trim(strings.Join(lines, "\n"), "\n")
+}
+
+var (
+	// pyAssignRe matches a module-level `NAME = ` assignment.
+	pyAssignRe = regexp.MustCompile(`(?m)^([A-Za-z_]\w*)[ \t]*(?::[^=\n]+)?=[ \t]*`)
+	// pyEnumClassRe matches `class Name(..Enum..):`.
+	pyEnumClassRe = regexp.MustCompile(`(?m)^class[ \t]+(\w+)[ \t]*\(([^)]*Enum[^)]*)\)[ \t]*:`)
+	// pyMemberRe matches an indented `MEMBER = ` line in a class body.
+	pyMemberRe = regexp.MustCompile(`^[ \t]+([A-Za-z_]\w*)[ \t]*=[ \t]*`)
+)
+
+// pyConstMap holds module-level assignments and Enum members
+// ("Class.MEMBER") so names like GitTools.STATUS.value resolve.
+type pyConstMap map[string]any
+
+func pyConsts(src string) pyConstMap {
+	consts := pyConstMap{}
+	for _, m := range pyAssignRe.FindAllStringSubmatchIndex(src, -1) {
+		consts[src[m[2]:m[3]]] = newLitParser(src, m[1], langPython).value()
+	}
+	for _, m := range pyEnumClassRe.FindAllStringSubmatchIndex(src, -1) {
+		pyEnumMembers(src, m[1], src[m[2]:m[3]], consts)
+	}
+	return consts
+}
+
+// pyEnumMembers records the members of the class body starting at pos.
+func pyEnumMembers(src string, pos int, class string, consts pyConstMap) {
+	for pos = nextLine(src, pos); pos < len(src); pos = nextLine(src, pos) {
+		line := src[pos:nextLine(src, pos)]
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			return
+		}
+		if m := pyMemberRe.FindStringSubmatchIndex(line); m != nil {
+			consts[class+"."+line[m[2]:m[3]]] = newLitParser(src, pos+m[1], langPython).value()
+		}
+	}
+}
+
+// resolve replaces an identifier, X.MEMBER, or X.MEMBER.value chain with
+// the constant it names.
+func (c pyConstMap) resolve(v any) any {
+	ch, ok := v.(*chainValue)
+	if !ok || ch.base != nil {
+		return v
+	}
+	for _, seg := range ch.segments {
+		if seg.called || seg.index != nil {
+			return v
+		}
+	}
+	name := strings.TrimSuffix(ch.chainName(), ".value")
+	if target, found := c[name]; found {
+		return target
+	}
+	return v
+}
+
+func (c pyConstMap) str(v any) (string, bool) { return asString(c.resolve(v)) }
+
+func (c pyConstMap) resolveAll(kwargs map[string]any) map[string]any {
+	out := make(map[string]any, len(kwargs))
+	for k, v := range kwargs {
+		out[k] = c.resolve(v)
+	}
+	return out
 }

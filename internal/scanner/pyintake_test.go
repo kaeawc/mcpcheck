@@ -162,6 +162,40 @@ mcp.add_tool(add, name="adder")
 	}
 }
 
+func TestScanPython_StackedDecoratorsAndConstants(t *testing.T) {
+	src := `
+class Tools(str, Enum):
+    STATUS = "git_status"
+
+    LOG = "git_log"
+
+READ_ONLY = ToolAnnotations(readOnlyHint=True)
+LOG_DESC = "Shows the commit log"
+
+def build(server):
+    @server.tool(name=Tools.STATUS.value, description="Shows status", annotations=READ_ONLY)
+    @reports_failures
+    def status(repo_path: str) -> str:
+        return ""
+
+    @server.tool(name=Tools.LOG, description=LOG_DESC)
+    @reports_failures
+    @other
+    async def log(repo_path: str, max_count: int = 10) -> str:
+        return ""
+`
+	tools := scanPython("s.py", src)
+	if len(tools) != 2 {
+		t.Fatalf("got %d tools: %+v", len(tools), tools)
+	}
+	if tools[0].Name != "git_status" || tools[0].Annotations["readOnlyHint"] != true {
+		t.Errorf("status: %+v", tools[0])
+	}
+	if tools[1].Name != "git_log" || tools[1].Description != "Shows the commit log" {
+		t.Errorf("log: %+v", tools[1])
+	}
+}
+
 func TestCleandoc(t *testing.T) {
 	got := cleandoc("First line.\n\n        Indented body.\n          More.\n    ")
 	if want := "First line.\n\nIndented body.\n  More."; got != want {

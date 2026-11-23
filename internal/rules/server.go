@@ -31,9 +31,9 @@ func init() {
 	registerViolationRule("server-jsonrpc-malformed", mcpmodel.ViolationJSONRPC, v2.SevError,
 		"Server messages must be well-formed JSON-RPC 2.0: correct jsonrpc version, matching response ids, exactly one of result or error.")
 	registerViolationRule("server-protocol-version-unsupported", mcpmodel.ViolationProtocolVersion, v2.SevError,
-		"The server must negotiate a published MCP protocol version in its initialize result.")
+		"The server must negotiate a published MCP protocol version, via initialize or server/discover.")
 	registerViolationRule("server-lifecycle-nonconformant", mcpmodel.ViolationLifecycle, v2.SevWarning,
-		"The initialize exchange must follow the spec: serverInfo with name and version, a capabilities object that declares tools, and no requests the client didn't enable.")
+		"The initialize or server/discover exchange must follow the spec: server identity, a capabilities object that declares tools, and no requests the client didn't enable.")
 	registerViolationRule("server-transport-nonconformant", mcpmodel.ViolationTransport, v2.SevWarning,
 		"The server must follow its transport's framing rules (newline-delimited stdio; Streamable HTTP status codes, content types, and session headers).")
 	registerViolationRule("server-tools-pagination-broken", mcpmodel.ViolationPagination, v2.SevError,

@@ -39,7 +39,7 @@ func objectLiteralTools(path, src string, l lang, convert schemaFunc) []mcpmodel
 	}
 	seen := map[int]bool{}
 	var tools []mcpmodel.Tool
-	for _, open := range enclosingOpen(src, l, '{', targets) {
+	for _, open := range enclosingOpen(src, l, targets) {
 		if open < 0 || seen[open] {
 			continue
 		}

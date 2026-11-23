@@ -50,7 +50,7 @@ func (c *client) withMeta(params map[string]any) map[string]any {
 	out["_meta"] = map[string]any{
 		metaProtocolVersion:    c.server.ProtocolVersion,
 		metaClientInfo:         c.clientInfo(),
-		metaClientCapabilities: map[string]any{},
+		metaClientCapabilities: c.capabilities(),
 	}
 	return out
 }

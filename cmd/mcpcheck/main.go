@@ -50,6 +50,7 @@ type config struct {
 	transport       string
 	headers         headerFlag
 	protocolVersion string
+	clientCaps      string
 	timeout         time.Duration
 	trace           bool
 	verbose         bool
@@ -69,6 +70,7 @@ func parseFlags(args []string) (*config, error) {
 	fs.StringVar(&c.transport, "transport", mcpclient.TransportAuto, "HTTP transport: auto|streamable-http|sse")
 	fs.Var(&c.headers, "header", "HTTP header \"Name: value\" sent with every request (repeatable)")
 	fs.StringVar(&c.protocolVersion, "protocol-version", "", "pin the protocol version (default: try "+mcpclient.LatestProtocolVersion+", fall back to "+mcpclient.LatestLegacyProtocolVersion+")")
+	fs.StringVar(&c.clientCaps, "client-capabilities", "", "client capabilities to declare: roots,sampling,elicitation or all")
 	fs.DurationVar(&c.timeout, "live-timeout", 30*time.Second, "deadline for the live session")
 	fs.BoolVar(&c.trace, "trace", false, "log every JSON-RPC message to stderr")
 	fs.BoolVar(&c.verbose, "verbose", false, "stream the stdio server's stderr")
@@ -187,6 +189,11 @@ func (c *config) liveOptions() (scanner.LiveOptions, error) {
 		ProtocolVersion: c.protocolVersion,
 		ClientVersion:   version,
 	}
+	caps, err := mcpclient.ParseClientCapabilities(c.clientCaps)
+	if err != nil {
+		return opts, fmt.Errorf("--client-capabilities: %w", err)
+	}
+	opts.ClientCapabilities = caps
 	if c.live != "" {
 		argv, err := splitCommand(c.live)
 		if err != nil {
@@ -222,6 +229,8 @@ flags:
   --protocol-version V         pin a protocol version; by default mcpcheck probes with
                                server/discover (%s) and falls back to initialize
                                (%s) for servers that only speak the legacy protocol
+  --client-capabilities LIST   declare roots,sampling,elicitation (or all) to reveal
+                               tools a server registers only for capable clients
   --live-timeout D             deadline for the live session (default 30s)
   --trace                      log every JSON-RPC message to stderr
   --verbose                    stream the stdio server's stderr

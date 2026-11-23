@@ -341,13 +341,28 @@ func TestRustAttrInputSchemaAndPaths(t *testing.T) {
 impl S {
     #[rmcp::tool(name = "raw", description = r#"Says "hi"."#, input_schema = rmcp::object!({"type": "object", "properties": {"q": {"type": "string"}}}))]
     pub(crate) async fn raw_tool<'a>(&'a self, ctx: RequestContext<'a>) {}
-}`)
+
+    #[tool(name = PING_NAME, description = PING_DESCRIPTION)]
+    fn ping(&self) {}
+
+    #[tool(description = concat!("a", "b"))]
+    fn computed(&self) {}
+}
+
+const PING_NAME: &str = "ping";
+pub const PING_DESCRIPTION: &'static str = "Health check.";`)
 	raw := rustToolByName(t, tools, "raw")
 	if raw.Description != `Says "hi".` {
 		t.Errorf("raw-string description %q", raw.Description)
 	}
 	if got := rustProp(t, raw, "q")["type"]; got != "string" {
 		t.Errorf("q type %v (schema %v)", got, raw.InputSchema)
+	}
+	if got := rustToolByName(t, tools, "ping").Description; got != "Health check." {
+		t.Errorf("const description %q", got)
+	}
+	if got := rustToolByName(t, tools, "computed").Description; got != "" {
+		t.Errorf("non-literal description should stay empty, got %q", got)
 	}
 }
 
@@ -626,16 +641,41 @@ func TestLoadRustCorpusServer(t *testing.T) {
 	}
 }
 
-func TestRustProbeTmp(t *testing.T) {
-	dir := os.Getenv("RUST_PROBE")
-	if dir == "" {
-		t.Skip()
+func TestLoadRustSkipsCargoTestsAndBenches(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, content string) {
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
+	tool := func(name string) string {
+		return "impl S {\n    #[tool(description = \"d\")]\n    fn " + name + "(&self) {}\n}\n"
+	}
+	write("Cargo.toml", "[package]\nname = \"x\"\n")
+	write("src/main.rs", tool("shipped"))
+	write("src/tests/helpers.rs", tool("src_tests_module"))
+	write("tests/it.rs", tool("integration_fixture"))
+	write("benches/b.rs", tool("bench_fixture"))
+	write("target/debug/build/gen.rs", tool("build_output"))
+
 	set, err := LoadRust(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range set.Tools {
-		t.Logf("%s:%d %s %q schema=%v ann=%v", tool.SourceFile, tool.SourceLine, tool.Name, tool.Description, tool.InputSchema, tool.Annotations)
+	var names []string
+	for _, tl := range set.Tools {
+		names = append(names, tl.Name)
+	}
+	sort.Strings(names)
+	if want := []string{"shipped", "src_tests_module"}; !reflect.DeepEqual(names, want) {
+		t.Errorf("tools %v, want %v", names, want)
+	}
+	single, err := LoadRust(filepath.Join(dir, "tests", "it.rs"))
+	if err != nil || len(single.Tools) != 1 {
+		t.Errorf("an explicitly named file is always scanned: %+v, %v", single, err)
 	}
 }

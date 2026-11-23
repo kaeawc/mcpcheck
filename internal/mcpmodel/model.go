@@ -62,6 +62,9 @@ type Server struct {
 	Instructions string         `json:"instructions,omitempty"`
 	Capabilities map[string]any `json:"capabilities,omitempty"`
 
+	// ClientCapabilities is what mcpcheck declared to the server.
+	ClientCapabilities map[string]any `json:"clientCapabilities,omitempty"`
+
 	// ToolPages is how many tools/list pages the server returned.
 	ToolPages int `json:"toolPages,omitempty"`
 

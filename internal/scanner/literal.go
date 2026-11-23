@@ -51,6 +51,9 @@ type litParser struct {
 	src  string
 	pos  int
 	lang lang
+	// depth counts open brackets; outside them a Python newline ends
+	// the statement.
+	depth int
 }
 
 func newLitParser(src string, pos int, l lang) *litParser {
@@ -73,11 +76,14 @@ func (p *litParser) peekNext() byte {
 	return p.src[p.pos+1]
 }
 
-// ws skips whitespace and comments.
+// ws skips whitespace and comments. Outside brackets in Python it stops
+// at a newline, which ends the statement.
 func (p *litParser) ws() {
 	for !p.eof() {
 		c := p.peek()
 		switch {
+		case c == '\n' && p.lang == langPython && p.depth == 0:
+			return
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			p.pos++
 		case !p.skipComment():
@@ -385,6 +391,8 @@ func (p *litParser) callOn(v any) any {
 // callArgs parses "(a, b, key=value)". Keyword arguments are Python-only.
 func (p *litParser) callArgs() ([]any, map[string]any) {
 	p.pos++ // '('
+	p.depth++
+	defer func() { p.depth-- }()
 	var args []any
 	var kwargs map[string]any
 	for {
@@ -396,6 +404,7 @@ func (p *litParser) callArgs() ([]any, map[string]any) {
 			p.pos++
 			return args, kwargs
 		}
+		start := p.pos
 		if name, ok := p.kwargName(); ok {
 			if kwargs == nil {
 				kwargs = map[string]any{}
@@ -404,10 +413,22 @@ func (p *litParser) callArgs() ([]any, map[string]any) {
 		} else {
 			args = append(args, p.value())
 		}
-		p.ws()
-		if p.peek() == ',' {
-			p.pos++
-		}
+		p.separator(start)
+	}
+}
+
+// separator consumes the ',' after a list element. When the element
+// made no progress — a ';' as in Rust's [0; 4] or a TypeScript type
+// literal, or a stray closer — it skips one byte so loops terminate.
+func (p *litParser) separator(start int) {
+	p.ws()
+	switch {
+	case p.peek() == ',':
+		p.pos++
+	case p.pos == start && !p.eof():
+		p.pos++
+	case p.peek() == ';':
+		p.pos++
 	}
 }
 
@@ -460,6 +481,8 @@ func (p *litParser) concatOperator() bool {
 
 func (p *litParser) array() any {
 	p.pos++ // '['
+	p.depth++
+	defer func() { p.depth-- }()
 	out := []any{}
 	for {
 		p.ws()
@@ -470,11 +493,9 @@ func (p *litParser) array() any {
 			p.pos++
 			return out
 		}
+		start := p.pos
 		out = append(out, p.value())
-		p.ws()
-		if p.peek() == ',' {
-			p.pos++
-		}
+		p.separator(start)
 	}
 }
 
@@ -482,6 +503,8 @@ func (p *litParser) array() any {
 // identifier chains; spreads and computed keys are recorded as unknown.
 func (p *litParser) object() any {
 	p.pos++ // '{'
+	p.depth++
+	defer func() { p.depth-- }()
 	out := map[string]any{}
 	for {
 		p.ws()
@@ -492,11 +515,9 @@ func (p *litParser) object() any {
 			p.pos++
 			return out
 		}
+		start := p.pos
 		p.objectEntry(out)
-		p.ws()
-		if p.peek() == ',' {
-			p.pos++
-		}
+		p.separator(start)
 	}
 }
 
@@ -715,17 +736,17 @@ func (p *litParser) skipBalanced() {
 }
 
 // enclosingOpen returns, for each offset in targets (ascending), the
-// offset of the innermost unclosed bracket of kind open at that point,
+// offset of the innermost unclosed bracket at that point if it is a '{',
 // or -1. Strings and comments are skipped so brackets inside them don't
 // count.
-func enclosingOpen(src string, l lang, open byte, targets []int) []int {
+func enclosingOpen(src string, l lang, targets []int) []int {
 	out := make([]int, len(targets))
 	p := newLitParser(src, 0, l)
 	var stack []int
 	ti := 0
 	for !p.eof() && ti < len(targets) {
 		for ti < len(targets) && targets[ti] <= p.pos {
-			out[ti] = topOf(stack, src, open)
+			out[ti] = topOf(stack, src, '{')
 			ti++
 		}
 		stack = p.stepStructure(stack)

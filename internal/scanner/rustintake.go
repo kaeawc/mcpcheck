@@ -20,7 +20,9 @@
 // rename/rename_all/default/skip/flatten, schemars description, /// docs,
 // unit-variant enums), collected across every file of the crate, or from
 // json!/object! literals and serde_json::from_str of a string literal,
-// directly or through a let/const binding.
+// directly or through a let/const binding. Names and descriptions may
+// also be string consts. Return types Json<T> / Result<Json<T>, E> give
+// the output schema, as in rmcp.
 //
 // Limitations:
 //   - Option<T> is reported as T (not required) rather than schemars'
@@ -29,13 +31,17 @@
 //     and enums with data or serde tagging are left unconstrained ({}).
 //   - Tools registered through runtime values (a description built with
 //     format!, a schema computed elsewhere) keep those fields empty.
-//   - Items under #[cfg(test)] mod blocks are ignored.
+//   - concat!/include_str! descriptions and with_input_schema::<T>() are
+//     not evaluated.
+//   - Items under #[cfg(test)] mod blocks and files in a crate's tests/
+//     and benches/ directories are ignored.
 package scanner
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -52,7 +58,11 @@ func isRustSourceFile(path string) bool { return strings.HasSuffix(path, ".rs") 
 // resolved, since a parameter struct often lives in another module.
 func LoadRust(path string) (*mcpmodel.ToolSet, error) {
 	sc := newRustScan()
-	err := walkSources(path, isRustSourceFile, func(p string) error {
+	cargo := map[string]bool{}
+	match := func(p string) bool {
+		return isRustSourceFile(p) && (p == path || !rustCargoTestFile(path, p, cargo))
+	}
+	err := walkSources(path, match, func(p string) error {
 		raw, err := os.ReadFile(p) // #nosec G304 -- scanning user-named sources is the point
 		if err != nil {
 			return fmt.Errorf("read %s: %w", p, err)
@@ -64,6 +74,32 @@ func LoadRust(path string) (*mcpmodel.ToolSet, error) {
 		return nil, err
 	}
 	return &mcpmodel.ToolSet{Source: path, Tools: sc.tools()}, nil
+}
+
+// rustCargoTestFile reports files under a crate's tests/ or benches/
+// directory (next to its Cargo.toml): integration tests and benchmarks,
+// whose tools are fixtures rather than what the server ships. cargo caches
+// Cargo.toml lookups per directory.
+func rustCargoTestFile(root, path string, cargo map[string]bool) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for i, part := range parts[:len(parts)-1] {
+		if part != "tests" && part != "benches" {
+			continue
+		}
+		crate := filepath.Join(append([]string{root}, parts[:i]...)...)
+		if _, seen := cargo[crate]; !seen {
+			_, statErr := os.Stat(filepath.Join(crate, "Cargo.toml"))
+			cargo[crate] = statErr == nil
+		}
+		if cargo[crate] {
+			return true
+		}
+	}
+	return false
 }
 
 // ---- normalization ----
@@ -96,8 +132,43 @@ func newRustSource(path, src string) *rustSource {
 		n.step()
 	}
 	n.unqualifyMacros()
+	n.neutralizeSemicolons()
 	return &rustSource{path: path, norm: string(n.norm), code: string(n.code), strs: n.strs}
 }
+
+// neutralizeSemicolons turns statement semicolons into commas in norm.
+// The literal parser stops at ';' without consuming it, and inside a
+// block expression ({ let a = 1; a }) or an array repeat ([0; 4]) that
+// stalls its object/array/argument loops; commas keep it moving.
+func (n *rustNormalizer) neutralizeSemicolons() {
+	for k, c := range n.code {
+		if c == ';' {
+			n.norm[k] = ','
+		}
+	}
+}
+
+// rustBalanced reports whether every bracket in code closes with its own
+// kind. Rust requires it, so a failure means the normalizer misread the
+// file; the literal parser can loop on unbalanced input, so such files
+// are skipped.
+func rustBalanced(code string) bool {
+	var stack []byte
+	for i := 0; i < len(code); i++ {
+		switch c := code[i]; c {
+		case '(', '[', '{':
+			stack = append(stack, c)
+		case ')', ']', '}':
+			if len(stack) == 0 || stack[len(stack)-1] != rustOpener[c] {
+				return false
+			}
+			stack = stack[:len(stack)-1]
+		}
+	}
+	return len(stack) == 0
+}
+
+var rustOpener = map[byte]byte{')': '(', ']': '[', '}': '{'}
 
 func (n *rustNormalizer) at(off int) byte {
 	if n.i+off < len(n.src) {
@@ -724,6 +795,24 @@ func metaRename(list []rustMeta, key string) (string, bool) {
 	return asString(m.value)
 }
 
+// stringValue reads a string literal, or a const/let binding of one.
+func (rs *rustSource) stringValue(v any, before int) (string, bool) {
+	if s, ok := asString(v); ok {
+		return s, true
+	}
+	if ch, ok := v.(*chainValue); ok && rustIsBindingUse(ch) {
+		return asString(rs.bindingValue(ch.segments[0].name, before))
+	}
+	return "", false
+}
+
+func (rs *rustSource) metaStr(list []rustMeta, key string, before int) (string, bool) {
+	if m := metaFind(list, key); m != nil {
+		return rs.stringValue(m.value, before)
+	}
+	return "", false
+}
+
 func rustLastSeg(path string) string {
 	if i := strings.LastIndex(path, "::"); i >= 0 {
 		return strings.TrimSpace(path[i+2:])
@@ -1167,6 +1256,9 @@ func newRustScan() *rustScan {
 
 func (sc *rustScan) addFile(path, src string) {
 	rs := newRustSource(path, src)
+	if !rustBalanced(rs.code) {
+		return
+	}
 	sc.sources = append(sc.sources, rs)
 	for _, m := range rustStructRe.FindAllStringSubmatchIndex(rs.code, -1) {
 		sc.addStruct(rs, m)
@@ -1263,11 +1355,11 @@ func (sc *rustScan) attrTool(rs *rustSource, m []int) (rustFound, bool) {
 	}
 	attr := items[ti].attr
 	t := mcpmodel.Tool{Name: rs.code[m[2]:m[3]], SourceFile: rs.path, SourceLine: lineAt(rs.norm, attr.offset)}
-	if s, ok := metaString(attr.args, "name"); ok {
+	if s, ok := rs.metaStr(attr.args, "name", attr.offset); ok {
 		t.Name = s
 	}
-	t.Title, _ = metaString(attr.args, "title")
-	t.Description = rmcpDescription(attr.args, items, ti)
+	t.Title, _ = rs.metaStr(attr.args, "title", attr.offset)
+	t.Description = rs.rmcpDescription(attr, items, ti)
 	t.Annotations = rmcpAnnotations(attr.args)
 	t.InputSchema = sc.rmcpInputSchema(rs, attr, sig)
 	t.OutputSchema = sc.rmcpOutputSchema(rs, attr, sig)
@@ -1336,9 +1428,9 @@ func (rs *rustSource) retEnd(pos int) int {
 // fn's doc lines, trimmed, blank ones dropped, joined with newlines. The
 // macro folds attributes in order and any non-doc attribute resets the
 // collected lines, so docs above e.g. #[allow(..)] are discarded.
-func rmcpDescription(args []rustMeta, items []rustPreludeItem, toolIdx int) string {
-	if m := metaFind(args, "description"); m != nil {
-		s, _ := asString(m.value)
+func (rs *rustSource) rmcpDescription(attr *rustAttr, items []rustPreludeItem, toolIdx int) string {
+	if metaFind(attr.args, "description") != nil {
+		s, _ := rs.metaStr(attr.args, "description", attr.offset)
 		return s
 	}
 	var lines []string
@@ -1515,12 +1607,12 @@ func (sc *rustScan) toolNew(rs *rustSource, at int) (rustFound, bool) {
 		return rustFound{}, false
 	}
 	args := ch.segments[1].args
-	name, ok := asString(args[0])
+	name, ok := rs.stringValue(args[0], at)
 	if !ok {
 		return rustFound{}, false
 	}
 	t := mcpmodel.Tool{Name: name, SourceFile: rs.path, SourceLine: lineAt(rs.norm, at)}
-	t.Description, _ = asString(args[1])
+	t.Description, _ = rs.stringValue(args[1], at)
 	if len(args) > 2 {
 		t.InputSchema = rs.schemaValue(args[2], at, 0)
 	}
@@ -1737,7 +1829,7 @@ func (sc *rustScan) jsonTools(rs *rustSource) []rustFound {
 	}
 	var out []rustFound
 	seen := map[int]bool{}
-	for _, open := range enclosingOpen(rs.norm, langRust, '{', keys) {
+	for _, open := range enclosingOpen(rs.norm, langRust, keys) {
 		if open < 0 || seen[open] {
 			continue
 		}
