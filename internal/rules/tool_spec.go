@@ -136,12 +136,9 @@ func checkAnnotations(ctx *v2.Context) {
 		return
 	}
 	checkAnnotationTypes(ctx, ann)
-	readOnly, _ := ann["readOnlyHint"].(bool)
-	destructive, hasDestructive := ann["destructiveHint"].(bool)
-	if readOnly && hasDestructive && destructive {
-		ctx.Report("annotations set both readOnlyHint and destructiveHint to true; a read-only tool cannot be destructive")
-	}
-	if readOnly {
+	// destructiveHint only means something when readOnlyHint is false, so
+	// readOnly+destructive (mcp-go's defaults) is not reported.
+	if readOnly, _ := ann["readOnlyHint"].(bool); readOnly {
 		if prefix := destructivePrefix(ctx.Tool.Name); prefix != "" {
 			ctx.Report(fmt.Sprintf("tool is annotated readOnlyHint: true but its name starts with %q, which implies it modifies state", prefix))
 		}

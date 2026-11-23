@@ -16,6 +16,7 @@ func TestToolSpecRulesFireOncePerPositiveTool(t *testing.T) {
 		"tool-name-invalid",
 		"tool-input-schema-invalid",
 		"tool-output-schema-invalid",
+		"tool-mcp-header-invalid",
 	} {
 		t.Run(ruleID, func(t *testing.T) {
 			set, err := scanner.LoadToolsJSON(filepath.Join("..", "..", "tests", "fixtures", "positive", ruleID, "tools.json"))
@@ -39,7 +40,6 @@ func TestAnnotationsInconsistentCases(t *testing.T) {
 	}
 	rule := findRule(t, "tool-annotations-inconsistent")
 	want := map[string]string{
-		"get_weather": "annotations set both readOnlyHint and destructiveHint to true; a read-only tool cannot be destructive",
 		"delete_file": "tool is annotated readOnlyHint: true but its name starts with \"delete\", which implies it modifies state",
 		"fetch_url":   "annotations.openWorldHint must be a boolean, got string",
 		"list_files":  "annotations must be an object, got string",

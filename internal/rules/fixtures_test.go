@@ -35,6 +35,9 @@ func TestPositiveFixtures(t *testing.T) {
 		"tool-input-schema-invalid",
 		"tool-output-schema-invalid",
 		"tool-annotations-inconsistent",
+		"tool-mcp-header-invalid",
+		"server-result-shape-nonconformant",
+		"server-legacy-protocol-only",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {
@@ -75,6 +78,9 @@ func TestNegativeFixtures(t *testing.T) {
 		"tool-input-schema-invalid",
 		"tool-output-schema-invalid",
 		"tool-annotations-inconsistent",
+		"tool-mcp-header-invalid",
+		"server-result-shape-nonconformant",
+		"server-legacy-protocol-only",
 	}
 	for _, ruleID := range cases {
 		t.Run(ruleID, func(t *testing.T) {

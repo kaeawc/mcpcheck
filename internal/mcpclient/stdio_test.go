@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -26,8 +27,9 @@ func TestStdioHappyPath(t *testing.T) {
 		t.Errorf("tool not fully decoded: %+v", tool)
 	}
 	s := set.Server
-	if s.Transport != "stdio" || s.Name != "fake" || s.Version != "1.2.3" ||
-		s.ProtocolVersion != LatestProtocolVersion || s.OfferedProtocolVersion != LatestProtocolVersion {
+	if s.Transport != "stdio" || s.Name != "fake" || s.Version != "1.2.3" || s.Era != mcpmodel.EraLegacy ||
+		s.ProtocolVersion != LatestLegacyProtocolVersion || s.OfferedProtocolVersion != LatestLegacyProtocolVersion ||
+		!strings.Contains(s.LegacyFallback, "-32601") {
 		t.Errorf("server not recorded: %+v", s)
 	}
 	if len(s.Violations) != 0 || len(s.NonProtocolOutput) != 0 {
@@ -37,7 +39,7 @@ func TestStdioHappyPath(t *testing.T) {
 	for _, m := range srv.received() {
 		methods = append(methods, m.Method)
 	}
-	if got := strings.Join(methods, ","); got != "initialize,notifications/initialized,tools/list" {
+	if got := strings.Join(methods, ","); got != "server/discover,initialize,notifications/initialized,tools/list" {
 		t.Errorf("client sent %s", got)
 	}
 }
@@ -212,6 +214,22 @@ func TestStdioServerClosesBeforeAnswering(t *testing.T) {
 
 func TestStdioTimeoutHint(t *testing.T) {
 	_, _, err := runStdio(t, 100*time.Millisecond, func(Message) []string { return nil })
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.HasPrefix(err.Error(), "initialize: timed out") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// TestStdioSilentServer covers a server that answers nothing at all: the
+// probe times out, the client falls back, and initialize then times out.
+func TestStdioSilentServer(t *testing.T) {
+	c2sR, c2sW := pipeDiscard()
+	defer c2sR.Close()
+	blockR, blockW := io.Pipe()
+	defer blockW.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	rec := NewRecorder(nil)
+	_, err := FetchTools(ctx, NewStdio(c2sW, blockR, rec), rec, "x", Options{ProbeTimeout: 50 * time.Millisecond})
 	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "never wrote a JSON-RPC message") {
 		t.Fatalf("err = %v", err)
 	}
@@ -225,7 +243,8 @@ func TestStdioLSPFramingAndBatches(t *testing.T) {
 	stream := "Content-Length: " + itoa(len(initRaw)) + "\r\n\r\n" + initRaw +
 		"\n[" + listRaw + "," + notification("notifications/message") + "]\n"
 	rec := NewRecorder(nil)
-	set, err := FetchTools(context.Background(), NewStdio(c2sW, strings.NewReader(stream), rec), rec, "x", Options{})
+	set, err := FetchTools(context.Background(), NewStdio(c2sW, strings.NewReader(stream), rec), rec, "x",
+		Options{ProtocolVersion: LatestLegacyProtocolVersion})
 	if err != nil {
 		t.Fatal(err)
 	}

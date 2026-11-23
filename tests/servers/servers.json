@@ -1,0 +1,348 @@
+[
+  {
+    "id": "python-fastmcp",
+    "language": "python",
+    "sdk": "mcp@1.30.0",
+    "source": "tests/servers/python-fastmcp",
+    "stdio": [
+      ".venv/bin/python",
+      "server.py",
+      "stdio"
+    ],
+    "http": {
+      "argv": [
+        ".venv/bin/python",
+        "server.py",
+        "http",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/mcp",
+      "transport": "streamable-http"
+    },
+    "sse": {
+      "argv": [
+        ".venv/bin/python",
+        "server.py",
+        "sse",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/sse",
+      "transport": "sse"
+    },
+    "requires": [
+      "python3"
+    ],
+    "notes": "Official SDK v1 FastMCP (from mcp.server.fastmcp import FastMCP); mcp 2.x removed this module (renamed MCPServer, see python-mcpserver), so this pins the last 1.x. @mcp.tool(annotations=ToolAnnotations(...)) with docstring descriptions; -> str return adds outputSchema {result: string} and structuredContent. serverInfo.version is the SDK version (FastMCP takes no version). Logs 'Processing request of type ...' to stderr. Python 3.10 venv."
+  },
+  {
+    "id": "python-fastmcp2",
+    "language": "python",
+    "sdk": "fastmcp@4.2.5",
+    "source": "tests/servers/python-fastmcp2",
+    "stdio": [
+      ".venv/bin/python",
+      "server.py",
+      "stdio"
+    ],
+    "http": {
+      "argv": [
+        ".venv/bin/python",
+        "server.py",
+        "http",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/mcp",
+      "transport": "streamable-http"
+    },
+    "sse": {
+      "argv": [
+        ".venv/bin/python",
+        "server.py",
+        "sse",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/sse",
+      "transport": "sse"
+    },
+    "requires": [
+      "python3"
+    ],
+    "notes": "Standalone fastmcp (PrefectHQ/jlowin) 4.2.5, which runs on mcp 2.3.0. fetch_url uses bare @mcp.tool (no parentheses) and therefore has NO openWorldHint annotation; delete_file passes annotations as a plain dict. Tools also get auto title ('Get Weather'), _meta.fastmcp.tags, outputSchema with x-fastmcp-wrap-result, additionalProperties:false. Rich-formatted INFO logs on stderr. No Host/Origin validation on HTTP. Python 3.12 venv (fastmcp requires >=3.11)."
+  },
+  {
+    "id": "python-lowlevel",
+    "language": "python",
+    "sdk": "mcp@1.30.0",
+    "source": "tests/servers/python-lowlevel",
+    "stdio": [
+      ".venv/bin/python",
+      "server.py",
+      "stdio"
+    ],
+    "http": null,
+    "sse": null,
+    "requires": [
+      "python3"
+    ],
+    "notes": "Official SDK v1 low-level Server with @server.list_tools() returning types.Tool(...) literals and @server.call_tool(); validates arguments against inputSchema. mcp 2.x replaced these decorators with Server(on_list_tools=..., on_call_tool=...), so this pins the last 1.x. stdio only. Python 3.10 venv."
+  },
+  {
+    "id": "python-mcpserver",
+    "language": "python",
+    "sdk": "mcp@2.3.0",
+    "source": "tests/servers/python-mcpserver",
+    "stdio": [
+      ".venv/bin/python",
+      "server.py",
+      "stdio"
+    ],
+    "http": {
+      "argv": [
+        ".venv/bin/python",
+        "server.py",
+        "http",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/mcp",
+      "transport": "streamable-http"
+    },
+    "sse": {
+      "argv": [
+        ".venv/bin/python",
+        "server.py",
+        "sse",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/sse",
+      "transport": "sse"
+    },
+    "requires": [
+      "python3"
+    ],
+    "notes": "Extra server (not in the original list): official SDK v2 MCPServer (from mcp.server.mcpserver import MCPServer), the renamed FastMCP. Same tool code shape as python-fastmcp but ToolAnnotations uses snake_case kwargs (read_only_hint=...). Python 3.10 venv."
+  },
+  {
+    "id": "python-handrolled",
+    "language": "python",
+    "sdk": "handrolled",
+    "source": "tests/servers/python-handrolled",
+    "stdio": [
+      "python3",
+      "server.py",
+      "stdio"
+    ],
+    "http": null,
+    "sse": {
+      "argv": [
+        "python3",
+        "server.py",
+        "http",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/sse",
+      "transport": "sse"
+    },
+    "requires": [
+      "python3"
+    ],
+    "notes": "Python stdlib only, no venv. Newline-delimited JSON-RPC over stdio; tools/list paginates (2 tools + nextCursor 'page2', then 1 tool). Echoes protocolVersion if in [2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25], else 2025-06-18. The 'http' mode is the legacy HTTP+SSE transport (GET /sse -> endpoint /messages?session_id=..., POST -> 202, response as event: message), hence it is declared under sse. No argument validation; does not require initialize before other requests."
+  },
+  {
+    "id": "ts-sdk-tool",
+    "language": "typescript",
+    "sdk": "@modelcontextprotocol/sdk@1.32.2",
+    "source": "tests/servers/ts-sdk-tool",
+    "stdio": [
+      "node_modules/.bin/tsx",
+      "server.ts",
+      "stdio"
+    ],
+    "http": null,
+    "sse": null,
+    "requires": [
+      "node"
+    ],
+    "notes": "McpServer with deprecated legacy server.tool(name, description, zodShape, annotations, cb) overload; zod@4.6.7; run via tsx@4.23.15 (no tsc build step)."
+  },
+  {
+    "id": "ts-sdk-register",
+    "language": "typescript",
+    "sdk": "@modelcontextprotocol/sdk@1.32.2",
+    "source": "tests/servers/ts-sdk-register",
+    "stdio": [
+      "node_modules/.bin/tsx",
+      "server.ts",
+      "stdio"
+    ],
+    "http": {
+      "argv": [
+        "node_modules/.bin/tsx",
+        "server.ts",
+        "http",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/mcp",
+      "transport": "streamable-http"
+    },
+    "sse": {
+      "argv": [
+        "node_modules/.bin/tsx",
+        "server.ts",
+        "sse",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/sse",
+      "transport": "sse"
+    },
+    "requires": [
+      "node"
+    ],
+    "notes": "McpServer.registerTool(name, {title, description, inputSchema: zodShape, annotations}, cb); zod@4.6.7; tsx@4.23.15. http = stateful StreamableHTTPServerTransport (randomUUID sessions, per-session McpServer, node:http, POST/GET/DELETE /mcp). sse = deprecated SSEServerTransport (GET /sse, POST /messages?sessionId=...)."
+  },
+  {
+    "id": "ts-lowlevel",
+    "language": "typescript",
+    "sdk": "@modelcontextprotocol/sdk@1.32.2",
+    "source": "tests/servers/ts-lowlevel",
+    "stdio": [
+      "node_modules/.bin/tsx",
+      "server.ts",
+      "stdio"
+    ],
+    "http": null,
+    "sse": null,
+    "requires": [
+      "node"
+    ],
+    "notes": "Low-level Server (marked @deprecated in favour of McpServer for non-advanced use) with setRequestHandler(ListToolsRequestSchema/CallToolRequestSchema); tools are inline JSON Schema literals inside the list handler; no zod; tsx@4.23.15."
+  },
+  {
+    "id": "ts-sdk-v2",
+    "language": "typescript",
+    "sdk": "@modelcontextprotocol/server@2.4.0",
+    "source": "tests/servers/ts-sdk-v2",
+    "stdio": [
+      "node_modules/.bin/tsx",
+      "server.ts",
+      "stdio"
+    ],
+    "http": {
+      "argv": [
+        "node_modules/.bin/tsx",
+        "server.ts",
+        "http",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/mcp",
+      "transport": "streamable-http"
+    },
+    "sse": null,
+    "requires": [
+      "node"
+    ],
+    "notes": "v2 TS SDK: @modelcontextprotocol/server@2.4.0 (+ @modelcontextprotocol/core@2.4.0 transitively) and @modelcontextprotocol/node@2.1.2; zod@4.6.7; tsx@4.23.15. McpServer.registerTool(name, {title?, description, inputSchema: z.object({...}), annotations}, cb) from a single factory; stdio via serveStdio(factory) (2025-era initialize pinned per connection, also speaks 2026-07-28 server/discover), http via createMcpHandler(factory) + toNodeHandler on node:http (2025-era traffic served by the stateless legacy fallback: no Mcp-Session-Id, GET/DELETE -> 405)."
+  },
+  {
+    "id": "rust-rmcp",
+    "language": "rust",
+    "sdk": "rmcp@3.11.0",
+    "source": "tests/servers/rust-rmcp",
+    "stdio": [
+      "target/release/rust-rmcp",
+      "stdio"
+    ],
+    "http": {
+      "argv": [
+        "target/release/rust-rmcp",
+        "http",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/mcp",
+      "transport": "streamable-http"
+    },
+    "sse": null,
+    "requires": [
+      "cargo"
+    ],
+    "notes": "rmcp 3.11.0 (rmcp-macros 3.11.0, schemars 1.2.3, axum 0.8.9, tokio 1.54.1). #[tool_router] + #[tool(name, description, annotations(...))] + Parameters<T>, #[tool_handler(name, version)]. HTTP: StreamableHttpService + LocalSessionManager (stateful, legacy_session_mode=true default) nested at /mcp. rmcp no longer ships an SSE server transport, so sse is null."
+  },
+  {
+    "id": "go-sdk",
+    "language": "go",
+    "sdk": "github.com/modelcontextprotocol/go-sdk@v1.8.0",
+    "source": "tests/servers/go-sdk",
+    "stdio": [
+      "./bin/server",
+      "stdio"
+    ],
+    "http": {
+      "argv": [
+        "./bin/server",
+        "http",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/mcp",
+      "transport": "streamable-http"
+    },
+    "sse": {
+      "argv": [
+        "./bin/server",
+        "sse",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/sse",
+      "transport": "sse"
+    },
+    "requires": [
+      "go"
+    ],
+    "notes": "Official Go SDK; tools registered with generic mcp.AddTool + typed input structs; get_weather InputSchema is the inferred jsonschema.For[weatherInput] schema post-processed to add the units enum (struct tags only carry descriptions). Nested Go module (own go.mod/go.sum), go 1.25.0 directive; builds with GOTOOLCHAIN=local go1.26. SSE POST endpoint is /sse?sessionid=<id>."
+  },
+  {
+    "id": "go-mcpgo",
+    "language": "go",
+    "sdk": "github.com/mark3labs/mcp-go@v1.6.0",
+    "source": "tests/servers/go-mcpgo",
+    "stdio": [
+      "./bin/server",
+      "stdio"
+    ],
+    "http": {
+      "argv": [
+        "./bin/server",
+        "http",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/mcp",
+      "transport": "streamable-http"
+    },
+    "sse": {
+      "argv": [
+        "./bin/server",
+        "sse",
+        "--port",
+        "{port}"
+      ],
+      "url": "http://127.0.0.1:{port}/sse",
+      "transport": "sse"
+    },
+    "requires": [
+      "go"
+    ],
+    "notes": "mark3labs/mcp-go; tools built with mcp.NewTool + WithString/WithBoolean/Enum/Required builders and s.AddTool. NewTool pre-populates all four annotation hints (readOnly=false, destructive=true, idempotent=false, openWorld=true) so every tool advertises a full annotations object. Nested Go module (own go.mod/go.sum), go 1.25.5 directive; builds with GOTOOLCHAIN=local go1.26. Streamable HTTP and SSE handlers mounted on our own http.Server bound to 127.0.0.1; SSE POST endpoint is /message?sessionId=<uuid>."
+  }
+]

@@ -17,9 +17,9 @@ const (
 )
 
 // DialHTTP connects to an MCP server over HTTP. With TransportAuto it
-// follows the spec's backwards-compatibility procedure: POST the first
-// message as Streamable HTTP, and if the server answers 400, 404, or 405,
-// fall back to the legacy HTTP+SSE transport at the same URL. URLs whose
+// follows the spec's backwards-compatibility procedure: POST initialize
+// as Streamable HTTP, and if the server answers 400, 404, or 405, fall
+// back to the legacy HTTP+SSE transport at the same URL. URLs whose
 // path ends in /sse go straight to the legacy transport.
 func DialHTTP(ctx context.Context, endpoint, mode string, opts HTTPOptions, rec *Recorder) (Transport, error) {
 	u, err := url.Parse(endpoint)
@@ -54,9 +54,12 @@ type fallback struct {
 
 func (f *fallback) Name() string { return f.cur.Name() }
 
+// Send forwards m. The transport decision is made on the initialize
+// request: a modern server/discover probe failing is a protocol-era
+// signal, not a transport one.
 func (f *fallback) Send(ctx context.Context, m Message) error {
 	err := f.cur.Send(ctx, m)
-	if f.decided {
+	if f.decided || m.Method != "initialize" {
 		return err
 	}
 	f.decided = true

@@ -6,19 +6,36 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kaeawc/mcpcheck/internal/mcpmodel"
 )
 
-// Protocol revisions mcpcheck understands, oldest first.
-var KnownProtocolVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
+// Protocol revisions mcpcheck understands, oldest first. Legacy revisions
+// open a session with initialize; modern ones (2026-07-28 on) are
+// stateless and carry the version in every request's _meta.
+var (
+	LegacyProtocolVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
+	ModernProtocolVersions = []string{"2026-07-28"}
+	KnownProtocolVersions  = append(append([]string(nil), LegacyProtocolVersions...), ModernProtocolVersions...)
+)
 
-// LatestProtocolVersion is offered in initialize unless overridden.
-var LatestProtocolVersion = KnownProtocolVersions[len(KnownProtocolVersions)-1]
+// LatestProtocolVersion is offered first unless overridden;
+// LatestLegacyProtocolVersion is offered in initialize on fallback.
+var (
+	LatestProtocolVersion       = ModernProtocolVersions[len(ModernProtocolVersions)-1]
+	LatestLegacyProtocolVersion = LegacyProtocolVersions[len(LegacyProtocolVersions)-1]
+)
 
 // IsKnownProtocolVersion reports whether v is a published revision.
-func IsKnownProtocolVersion(v string) bool {
-	for _, k := range KnownProtocolVersions {
+func IsKnownProtocolVersion(v string) bool { return contains(KnownProtocolVersions, v) }
+
+// IsModernProtocolVersion reports whether v uses per-request metadata
+// instead of the initialize handshake (2026-07-28 and later).
+func IsModernProtocolVersion(v string) bool { return v >= ModernProtocolVersions[0] }
+
+func contains(list []string, v string) bool {
+	for _, k := range list {
 		if k == v {
 			return true
 		}
@@ -32,34 +49,44 @@ const maxToolPages = 1000
 
 // Options configures a live session.
 type Options struct {
-	// ProtocolVersion is offered in initialize. Defaults to
-	// LatestProtocolVersion.
+	// ProtocolVersion pins the protocol. Empty means dual-era: probe for
+	// a modern server with server/discover and fall back to initialize.
+	// A modern version disables the fallback; a legacy version skips the
+	// probe.
 	ProtocolVersion string
 	ClientName      string
 	ClientVersion   string
+	// ProbeTimeout bounds the server/discover probe; zero means 5s.
+	ProbeTimeout time.Duration
 }
 
 type client struct {
 	t      Transport
 	rec    *Recorder
+	opts   Options
 	nextID int64
 	server *mcpmodel.Server
 	step   string
 	recvd  int
+
+	// modern is set while requests carry 2026-07-28 style _meta.
+	modern bool
+	// abandoned holds ids of requests given up on (a timed-out probe)
+	// whose late responses must be ignored.
+	abandoned map[string]bool
 }
 
-// FetchTools runs initialize, notifications/initialized, and a paginated
-// tools/list over t, and returns the tools along with everything observed
-// about the server. The caller owns t and must Close it.
+// FetchTools establishes the protocol over t — server/discover for modern
+// servers, or the initialize handshake for legacy ones — runs a paginated
+// tools/list, and returns the tools along with everything observed about
+// the server. The caller owns t and must Close it.
 func FetchTools(ctx context.Context, t Transport, rec *Recorder, endpoint string, opts Options) (*mcpmodel.ToolSet, error) {
-	if opts.ProtocolVersion == "" {
-		opts.ProtocolVersion = LatestProtocolVersion
+	if opts.ClientName == "" {
+		opts.ClientName, opts.ClientVersion = "mcpcheck", "dev"
 	}
-	c := &client{t: t, rec: rec, server: &mcpmodel.Server{
-		Endpoint:               endpoint,
-		OfferedProtocolVersion: opts.ProtocolVersion,
-	}}
-	tools, err := c.run(ctx, opts)
+	c := &client{t: t, rec: rec, opts: opts, abandoned: map[string]bool{},
+		server: &mcpmodel.Server{Endpoint: endpoint}}
+	tools, err := c.run(ctx)
 	c.server.Transport = t.Name()
 	rec.apply(c.server)
 	if err != nil {
@@ -68,8 +95,28 @@ func FetchTools(ctx context.Context, t Transport, rec *Recorder, endpoint string
 	return &mcpmodel.ToolSet{Tools: tools, Source: endpoint, Server: c.server}, nil
 }
 
-func (c *client) run(ctx context.Context, opts Options) ([]mcpmodel.Tool, error) {
-	if err := c.initialize(ctx, opts); err != nil {
+func (c *client) run(ctx context.Context) ([]mcpmodel.Tool, error) {
+	pinned := c.opts.ProtocolVersion
+	if pinned != "" && !IsModernProtocolVersion(pinned) {
+		return c.runLegacy(ctx, pinned)
+	}
+	offer := pinned
+	if offer == "" {
+		offer = LatestProtocolVersion
+	}
+	modern, legacyVersion, err := c.tryModern(ctx, offer, pinned != "")
+	if err != nil {
+		return nil, err
+	}
+	if modern {
+		return c.listTools(ctx)
+	}
+	return c.runLegacy(ctx, legacyVersion)
+}
+
+func (c *client) runLegacy(ctx context.Context, version string) ([]mcpmodel.Tool, error) {
+	c.server.Era = mcpmodel.EraLegacy
+	if err := c.initialize(ctx, version); err != nil {
 		return nil, err
 	}
 	c.step = "notifications/initialized"
@@ -87,15 +134,12 @@ func (c *client) run(ctx context.Context, opts Options) ([]mcpmodel.Tool, error)
 	return c.listTools(ctx)
 }
 
-func (c *client) initialize(ctx context.Context, opts Options) error {
-	name, version := opts.ClientName, opts.ClientVersion
-	if name == "" {
-		name, version = "mcpcheck", "dev"
-	}
+func (c *client) initialize(ctx context.Context, offered string) error {
+	c.server.OfferedProtocolVersion = offered
 	raw, err := c.call(ctx, "initialize", map[string]any{
-		"protocolVersion": opts.ProtocolVersion,
+		"protocolVersion": offered,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": name, "version": version},
+		"clientInfo":      c.clientInfo(),
 	})
 	if err != nil {
 		return err
@@ -116,11 +160,21 @@ func (c *client) initialize(ctx context.Context, opts Options) error {
 	s := c.server
 	s.ProtocolVersion, s.Capabilities, s.Instructions = res.ProtocolVersion, res.Capabilities, res.Instructions
 	s.Name, s.Version, s.Title = res.ServerInfo.Name, res.ServerInfo.Version, res.ServerInfo.Title
-	c.checkInitialize(opts.ProtocolVersion)
-	if va, ok := c.t.(versionAware); ok && IsKnownProtocolVersion(s.ProtocolVersion) {
-		va.SetProtocolVersion(s.ProtocolVersion)
+	c.checkInitialize(offered)
+	if contains(LegacyProtocolVersions, s.ProtocolVersion) {
+		c.setTransportVersion(s.ProtocolVersion)
 	}
 	return nil
+}
+
+func (c *client) clientInfo() map[string]any {
+	return map[string]any{"name": c.opts.ClientName, "version": c.opts.ClientVersion}
+}
+
+func (c *client) setTransportVersion(v string) {
+	if va, ok := c.t.(versionAware); ok {
+		va.SetProtocolVersion(v)
+	}
 }
 
 func (c *client) checkInitialize(offered string) {
@@ -128,10 +182,10 @@ func (c *client) checkInitialize(offered string) {
 	switch {
 	case s.ProtocolVersion == "":
 		c.rec.Violation(mcpmodel.ViolationProtocolVersion, "initialize result has no protocolVersion")
-	case !IsKnownProtocolVersion(s.ProtocolVersion):
+	case !contains(LegacyProtocolVersions, s.ProtocolVersion):
 		c.rec.Violation(mcpmodel.ViolationProtocolVersion,
-			"server answered protocolVersion %q to an offer of %q; published revisions are %s",
-			s.ProtocolVersion, offered, strings.Join(KnownProtocolVersions, ", "))
+			"server answered initialize with protocolVersion %q to an offer of %q; initialize negotiates one of %s",
+			s.ProtocolVersion, offered, strings.Join(LegacyProtocolVersions, ", "))
 	}
 	if s.Capabilities == nil {
 		c.rec.Violation(mcpmodel.ViolationLifecycle, "initialize result has no capabilities object")
@@ -147,7 +201,7 @@ func (c *client) listTools(ctx context.Context) ([]mcpmodel.Tool, error) {
 	seen := map[string]bool{}
 	cursor := ""
 	for page := 1; page <= maxToolPages; page++ {
-		var params any
+		var params map[string]any
 		if cursor != "" {
 			params = map[string]any{"cursor": cursor}
 		}
@@ -184,6 +238,9 @@ func (c *client) parseToolsPage(raw json.RawMessage) ([]mcpmodel.Tool, string, e
 	if err := json.Unmarshal(raw, &res); err != nil {
 		return nil, "", fmt.Errorf("parse tools/list result: %w", err)
 	}
+	if c.modern {
+		c.checkCacheable("tools/list", raw)
+	}
 	if res.Tools == nil {
 		c.rec.Violation(mcpmodel.ViolationJSONRPC, "tools/list result has no \"tools\" array")
 	}
@@ -204,10 +261,17 @@ func (c *client) parseToolsPage(raw json.RawMessage) ([]mcpmodel.Tool, string, e
 
 // call sends a request and waits for its response, servicing any
 // server-initiated requests and notifications that arrive first.
-func (c *client) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+func (c *client) call(ctx context.Context, method string, params map[string]any) (json.RawMessage, error) {
 	c.step = method
 	c.nextID++
-	req, err := newRequest(c.nextID, method, params)
+	if c.modern {
+		params = c.withMeta(params)
+	}
+	var p any
+	if params != nil {
+		p = params
+	}
+	req, err := newRequest(c.nextID, method, p)
 	if err != nil {
 		return nil, err
 	}
@@ -221,6 +285,9 @@ func (c *client) call(ctx context.Context, method string, params any) (json.RawM
 		}
 		c.recvd++
 		if res, done, err := c.dispatch(ctx, req, m); done {
+			if err == nil && c.modern {
+				return c.checkResultType(method, res)
+			}
 			return res, err
 		}
 	}
@@ -234,6 +301,7 @@ func (c *client) dispatch(ctx context.Context, req, m Message) (json.RawMessage,
 	case m.IsRequest():
 		c.answer(ctx, m)
 	case m.IsNotification():
+		c.checkNotification(m)
 	case m.IsResponse():
 		return c.matchResponse(req, m)
 	default:
@@ -245,11 +313,7 @@ func (c *client) dispatch(ctx context.Context, req, m Message) (json.RawMessage,
 func (c *client) matchResponse(req, m Message) (json.RawMessage, bool, error) {
 	match, exact := sameID(req.ID, m.ID)
 	if !match {
-		if m.Error != nil && (len(m.ID) == 0 || string(m.ID) == "null") {
-			return nil, true, m.Error
-		}
-		c.rec.Violation(mcpmodel.ViolationJSONRPC, "server sent a response with id %s while %s (id %s) was outstanding", m.ID, req.Method, req.ID)
-		return nil, false, nil
+		return c.unmatchedResponse(req, m)
 	}
 	if !exact {
 		c.rec.Violation(mcpmodel.ViolationJSONRPC, "server answered request id %s with id %s; response ids must match exactly, including type", req.ID, m.ID)
@@ -267,9 +331,28 @@ func (c *client) matchResponse(req, m Message) (json.RawMessage, bool, error) {
 	return m.Result, true, nil
 }
 
+// unmatchedResponse handles a response whose id isn't the outstanding
+// request's: a late answer to an abandoned probe is ignored, and an error
+// with a null id (the server couldn't parse the request) is taken as the
+// answer.
+func (c *client) unmatchedResponse(req, m Message) (json.RawMessage, bool, error) {
+	if c.abandoned[normalizeID(m.ID)] {
+		return nil, false, nil
+	}
+	if m.Error != nil && (len(m.ID) == 0 || string(m.ID) == "null") {
+		return nil, true, m.Error
+	}
+	c.rec.Violation(mcpmodel.ViolationJSONRPC, "server sent a response with id %s while %s (id %s) was outstanding", m.ID, req.Method, req.ID)
+	return nil, false, nil
+}
+
 // answer replies to a server-initiated request. mcpcheck declares no
 // client capabilities, so only ping is expected.
 func (c *client) answer(ctx context.Context, m Message) {
+	if c.modern {
+		c.rec.Violation(mcpmodel.ViolationLifecycle,
+			"server sent a %s request under protocol %s; modern servers must not send requests (use InputRequiredResult instead)", m.Method, c.server.ProtocolVersion)
+	}
 	reply := Message{JSONRPC: "2.0", ID: m.ID}
 	switch m.Method {
 	case "ping":

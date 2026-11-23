@@ -248,6 +248,9 @@ func (t *StreamableHTTP) Send(_ context.Context, m Message) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+	if m.Method != "" {
+		req.Header.Set("Mcp-Method", m.Method)
+	}
 	t.mu.Lock()
 	if t.sessionID != "" {
 		req.Header.Set("Mcp-Session-Id", t.sessionID)
@@ -266,19 +269,23 @@ func (t *StreamableHTTP) Send(_ context.Context, m Message) error {
 	return t.handleResponse(m, req, resp)
 }
 
+// captureSession adopts the session id from a successful initialize
+// response. Ids on other responses are ignored: some servers attach one
+// even to error responses, and reusing it would poison initialize.
 func (t *StreamableHTTP) captureSession(m Message, resp *http.Response) {
 	sid := resp.Header.Get("Mcp-Session-Id")
-	if sid == "" {
+	if sid == "" || resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.sessionID == "" && m.Method != "initialize" {
+	switch {
+	case t.sessionID != "":
+	case m.Method == "initialize":
+		t.sessionID = sid
+	default:
 		t.rec.Violation(mcpmodel.ViolationTransport,
 			"server assigned Mcp-Session-Id on a %s response; session ids must be assigned on the initialize response", m.Method)
-	}
-	if t.sessionID == "" {
-		t.sessionID = sid
 	}
 }
 
@@ -323,9 +330,9 @@ func (t *StreamableHTTP) statusFailure(m Message, req *http.Request, resp *http.
 	se := statusError(req, resp)
 	if msgs, err := decodeMessages([]byte(se.Body)); err == nil && len(msgs) == 1 && msgs[0].Error != nil && m.IsRequest() {
 		t.rec.Trace("<-", []byte(se.Body))
-		if len(msgs[0].ID) == 0 {
-			msgs[0].ID = m.ID
-		}
+		// The HTTP response answers this POST whatever id the body
+		// carries (servers use null or placeholders like "server-error").
+		msgs[0].ID = m.ID
 		t.in.push(msgs[0])
 		return nil
 	}

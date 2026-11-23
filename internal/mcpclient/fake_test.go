@@ -76,6 +76,9 @@ func (s *standard) handle(m Message) []string {
 	case "tools/list":
 		return []string{result(m.ID, map[string]any{"tools": s.tools})}
 	}
+	if m.IsRequest() {
+		return []string{rpcError(m.ID, -32601, "Method not found")}
+	}
 	return nil
 }
 
@@ -90,34 +93,43 @@ func runStdio(t *testing.T, timeout time.Duration, h handler) (*mcpmodel.ToolSet
 	t.Helper()
 	c2sR, c2sW := io.Pipe()
 	s2cR, s2cW := io.Pipe()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := contextWithTimeout(timeout)
 	defer cancel()
-
-	go func() {
-		defer s2cW.Close()
-		br := bufio.NewReader(c2sR)
-		for {
-			line, err := br.ReadBytes('\n')
-			if err != nil {
-				return
-			}
-			var m Message
-			if json.Unmarshal(line, &m) != nil {
-				continue
-			}
-			for _, out := range h(m) {
-				if _, err := io.WriteString(s2cW, out+"\n"); err != nil {
-					return
-				}
-			}
-		}
-	}()
-
+	go serveLines(c2sR, s2cW, h)
 	rec := NewRecorder(nil)
-	tr := NewStdio(c2sW, s2cR, rec)
-	set, err := FetchTools(ctx, tr, rec, "fake-server", Options{})
+	set, err := FetchTools(ctx, NewStdio(c2sW, s2cR, rec), rec, "fake-server", Options{})
 	_ = c2sW.Close()
 	return set, rec, err
+}
+
+// serveLines runs h as a newline-delimited server. Like real legacy
+// SDKs, an unanswered server/discover gets "method not found".
+func serveLines(in io.Reader, out *io.PipeWriter, h handler) {
+	defer out.Close()
+	br := bufio.NewReader(in)
+	for {
+		line, err := br.ReadBytes('\n')
+		if err != nil {
+			return
+		}
+		var m Message
+		if json.Unmarshal(line, &m) != nil {
+			continue
+		}
+		replies := h(m)
+		if len(replies) == 0 && m.Method == "server/discover" {
+			replies = []string{rpcError(m.ID, -32601, "Method not found")}
+		}
+		for _, r := range replies {
+			if _, err := io.WriteString(out, r+"\n"); err != nil {
+				return
+			}
+		}
+	}
+}
+
+func contextWithTimeout(d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), d)
 }
 
 func violations(set *mcpmodel.ToolSet, kind mcpmodel.ViolationKind) []string {

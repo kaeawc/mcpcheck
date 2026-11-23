@@ -46,6 +46,16 @@ type Server struct {
 	OfferedProtocolVersion string `json:"offeredProtocolVersion,omitempty"`
 	ProtocolVersion        string `json:"protocolVersion,omitempty"`
 
+	// Era is EraModern (stateless, 2026-07-28+) or EraLegacy
+	// (initialize handshake).
+	Era string `json:"era,omitempty"`
+	// SupportedVersions is what a modern server listed in server/discover.
+	SupportedVersions []string `json:"supportedVersions,omitempty"`
+	// LegacyFallback records why a dual-era probe concluded the server
+	// only speaks the legacy protocol; empty if no probe ran or it
+	// found a modern server.
+	LegacyFallback string `json:"legacyFallback,omitempty"`
+
 	Name         string         `json:"name,omitempty"`
 	Version      string         `json:"version,omitempty"`
 	Title        string         `json:"title,omitempty"`
@@ -63,6 +73,12 @@ type Server struct {
 	Violations []Violation `json:"violations,omitempty"`
 }
 
+// Protocol eras.
+const (
+	EraModern = "modern"
+	EraLegacy = "legacy"
+)
+
 // ViolationKind groups protocol violations so each kind maps to one rule.
 type ViolationKind string
 
@@ -73,6 +89,7 @@ const (
 	ViolationLifecycle       ViolationKind = "lifecycle"
 	ViolationTransport       ViolationKind = "transport"
 	ViolationPagination      ViolationKind = "pagination"
+	ViolationResultShape     ViolationKind = "result-shape"
 )
 
 // Violation is one protocol-level problem observed during a live session.

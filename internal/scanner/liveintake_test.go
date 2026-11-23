@@ -44,6 +44,7 @@ func serveStdio() {
 		case "tools/list":
 			result = `{"tools":[{"name":"get_weather","description":"Get the current weather for a city.","inputSchema":{"type":"object"}}]}`
 		default:
+			fmt.Printf(`{"jsonrpc":"2.0","id":%s,"error":{"code":-32601,"message":"Method not found"}}`+"\n", m.ID)
 			continue
 		}
 		fmt.Printf(`{"jsonrpc":"2.0","id":%s,"result":%s}`+"\n", m.ID, result)
@@ -83,7 +84,7 @@ func TestLoadLiveReportsCrash(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	for _, want := range []string{"initialize:", "exited with status 3", "ImportError: no module named mcp"} {
+	for _, want := range []string{"server/discover:", "exited with status 3", "ImportError: no module named mcp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error lacks %q:\n%v", want, err)
 		}

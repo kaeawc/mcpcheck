@@ -53,6 +53,17 @@
           "city"
         ]
       }
+    },
+    {
+      "name": "lookup",
+      "description": "mcp-go defaults: readOnly plus destructive is ignored.",
+      "inputSchema": {
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": true
+      }
     }
   ]
 }

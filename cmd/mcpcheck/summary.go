@@ -46,7 +46,12 @@ func describeServer(set *mcpmodel.ToolSet) string {
 		name += " " + s.Version
 	}
 	proto := s.ProtocolVersion
-	if proto != s.OfferedProtocolVersion {
+	switch {
+	case s.Era == mcpmodel.EraModern:
+		proto += " (stateless)"
+	case s.LegacyFallback != "":
+		proto += " via initialize (legacy only: " + s.LegacyFallback + ")"
+	case s.OfferedProtocolVersion != "" && proto != s.OfferedProtocolVersion:
 		proto += " (offered " + s.OfferedProtocolVersion + ")"
 	}
 	pages := ""

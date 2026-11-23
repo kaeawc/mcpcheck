@@ -68,7 +68,7 @@ func parseFlags(args []string) (*config, error) {
 	fs.StringVar(&c.url, "url", "", "connect to an MCP server over HTTP at this URL")
 	fs.StringVar(&c.transport, "transport", mcpclient.TransportAuto, "HTTP transport: auto|streamable-http|sse")
 	fs.Var(&c.headers, "header", "HTTP header \"Name: value\" sent with every request (repeatable)")
-	fs.StringVar(&c.protocolVersion, "protocol-version", "", "protocol version to offer (default: latest, "+mcpclient.LatestProtocolVersion+")")
+	fs.StringVar(&c.protocolVersion, "protocol-version", "", "pin the protocol version (default: try "+mcpclient.LatestProtocolVersion+", fall back to "+mcpclient.LatestLegacyProtocolVersion+")")
 	fs.DurationVar(&c.timeout, "live-timeout", 30*time.Second, "deadline for the live session")
 	fs.BoolVar(&c.trace, "trace", false, "log every JSON-RPC message to stderr")
 	fs.BoolVar(&c.verbose, "verbose", false, "stream the stdio server's stderr")
@@ -219,13 +219,15 @@ flags:
   --format text|json|sarif     output format (default text)
   --transport auto|streamable-http|sse
   --header "Name: value"       HTTP header for every request (repeatable)
-  --protocol-version V         version to offer (default %s)
+  --protocol-version V         pin a protocol version; by default mcpcheck probes with
+                               server/discover (%s) and falls back to initialize
+                               (%s) for servers that only speak the legacy protocol
   --live-timeout D             deadline for the live session (default 30s)
   --trace                      log every JSON-RPC message to stderr
   --verbose                    stream the stdio server's stderr
   --quiet                      no summary on stderr
   --save FILE                  record the live session; re-check it later with mcpcheck FILE
-`, mcpclient.LatestProtocolVersion)
+`, mcpclient.LatestProtocolVersion, mcpclient.LatestLegacyProtocolVersion)
 }
 
 func writeRules(format string) error {
@@ -260,7 +262,25 @@ func analyze(static, live *mcpmodel.ToolSet) []v2.Finding {
 	if static != nil && live != nil {
 		findings = append(findings, v2.RunComparison(rules, static, live)...)
 	}
-	return findings
+	return dedupe(findings)
+}
+
+// dedupe drops a finding that repeats an earlier one for the same rule,
+// tool, and message — the same problem seen in both the source and the
+// live server — keeping the first, which carries the source location.
+func dedupe(findings []v2.Finding) []v2.Finding {
+	type key struct{ rule, tool, msg string }
+	seen := map[key]bool{}
+	out := findings[:0]
+	for _, f := range findings {
+		k := key{f.RuleID, f.ToolName, f.Message}
+		if f.ToolName != "" && seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, f)
+	}
+	return out
 }
 
 func writeFindings(format string, findings []v2.Finding) error {

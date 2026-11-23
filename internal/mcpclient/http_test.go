@@ -98,14 +98,20 @@ func TestStreamableHTTP(t *testing.T) {
 			}
 			fake.mu.Lock()
 			defer fake.mu.Unlock()
-			if got := strings.Join(fake.methods, ","); got != "POST,POST,POST,DELETE" {
+			if got := strings.Join(fake.methods, ","); got != "POST,POST,POST,POST,DELETE" {
 				t.Errorf("requests: %s", got)
 			}
-			first, last := fake.headers[0], fake.headers[2]
+			if probe := fake.headers[0]; probe.Get("Mcp-Method") != "server/discover" || probe.Get("MCP-Protocol-Version") != LatestProtocolVersion {
+				t.Errorf("probe headers: %v", probe)
+			}
+			first, last := fake.headers[1], fake.headers[3]
+			if first.Get("MCP-Protocol-Version") != "" {
+				t.Errorf("initialize must not carry a modern MCP-Protocol-Version: %q", first.Get("MCP-Protocol-Version"))
+			}
 			if first.Get("Mcp-Session-Id") != "" || last.Get("Mcp-Session-Id") != "sess-1" {
 				t.Errorf("session id not echoed: first=%q last=%q", first.Get("Mcp-Session-Id"), last.Get("Mcp-Session-Id"))
 			}
-			if last.Get("MCP-Protocol-Version") != LatestProtocolVersion {
+			if last.Get("MCP-Protocol-Version") != LatestLegacyProtocolVersion {
 				t.Errorf("MCP-Protocol-Version = %q", last.Get("MCP-Protocol-Version"))
 			}
 			if !strings.Contains(first.Get("Accept"), "text/event-stream") || first.Get("Authorization") != "Bearer t0k" {

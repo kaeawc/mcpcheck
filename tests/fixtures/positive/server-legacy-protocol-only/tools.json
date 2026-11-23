@@ -1,0 +1,24 @@
+{
+  "tools": [
+    {
+      "name": "execute_sql",
+      "description": "Execute SQL on a regional database.",
+      "inputSchema": {
+        "type": "object"
+      }
+    }
+  ],
+  "server": {
+    "transport": "stdio",
+    "endpoint": "python server.py",
+    "protocolVersion": "2025-11-25",
+    "offeredProtocolVersion": "2025-11-25",
+    "name": "db",
+    "version": "1.0",
+    "capabilities": {
+      "tools": {}
+    },
+    "era": "legacy",
+    "legacyFallback": "server/discover failed with error -32601 (Method not found)"
+  }
+}

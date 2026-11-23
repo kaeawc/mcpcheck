@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 func TestSplitCommand(t *testing.T) {
@@ -63,5 +65,19 @@ func TestParseFlagsValidation(t *testing.T) {
 	c, err := parseFlags([]string{"--url", "http://localhost:3000/mcp", "--header", "Authorization: Bearer t", "src/"})
 	if err != nil || c.path != "src/" || c.headers["Authorization"][0] != "Bearer t" {
 		t.Errorf("parseFlags happy path: %+v, %v", c, err)
+	}
+}
+
+func TestDedupeKeepsSourceLocatedFinding(t *testing.T) {
+	findings := []v2.Finding{
+		{RuleID: "r", ToolName: "t", Message: "m", SourceFile: "server.ts", SourceLine: 3},
+		{RuleID: "r", ToolName: "t", Message: "m"},
+		{RuleID: "r", ToolName: "u", Message: "m"},
+		{RuleID: "s", Message: "server-level"},
+		{RuleID: "s", Message: "server-level"},
+	}
+	got := dedupe(findings)
+	if len(got) != 4 || got[0].SourceFile != "server.ts" || got[1].ToolName != "u" {
+		t.Errorf("dedupe = %+v", got)
 	}
 }
