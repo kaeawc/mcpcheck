@@ -152,7 +152,7 @@ mcpcheck --list-rules --format json      # machine-readable
 
 | ID | Severity | Category | Summary |
 |---|---|---|---|
-| `destructive-tool-not-gated` | error | safety-contract | Tools whose name implies a destructive or externally-visible action must require explicit confirmation through the schema. |
+| `destructive-tool-not-gated` | error | safety-contract | Tools whose name implies a destructive or externally-visible action must require explicit confirmation, through a schema field or a destructiveHint: true annotation that tells clients to confirm. |
 | `file-tool-no-path-confinement` | warning | safety-contract | Tools that accept a filesystem path must constrain it via an enum, pattern, or const so an agent cannot read or write arbitrary files (path traversal). |
 | `network-tool-no-allowlist` | warning | safety-contract | Tools that accept a user-supplied URL must constrain the destination via an enum, pattern, or const so an agent cannot drive arbitrary outbound requests (SSRF). |
 | `server-jsonrpc-malformed` | error | protocol-conformance | Server messages must be well-formed JSON-RPC 2.0: correct jsonrpc version, matching response ids, exactly one of result or error. |
