@@ -27,7 +27,7 @@ func init() {
 		ID:          "network-tool-no-allowlist",
 		Category:    v2.CatSafety,
 		Severity:    v2.SevWarning,
-		Description: "Tools that accept a user-supplied URL must constrain the destination via an enum, pattern, or const so an agent cannot drive arbitrary outbound requests (SSRF).",
+		Description: "Tools that accept a user-supplied URL must constrain the destination via an enum, pattern, or const, or document runtime confinement (e.g. \"only allowed domains\"), so an agent cannot drive arbitrary outbound requests (SSRF).",
 		Fix:         v2.FixNone,
 		Implementation: func(ctx *v2.Context) {
 			schema := ctx.Tool.InputSchema
@@ -51,12 +51,12 @@ func init() {
 				if !ok {
 					continue
 				}
-				if hasStringValueConstraint(prop) {
+				if hasStringValueConstraint(prop) || documentsConfinement(urlConfinementRe, ctx.Tool.Description, prop) {
 					continue
 				}
 				ctx.Report(
 					"input property \"" + key + "\" looks like a URL but has no allowlist " +
-						"(expected one of: enum, pattern, const) — agent could drive arbitrary outbound requests",
+						"(expected one of: enum, pattern, const) and the tool doesn't document runtime confinement — agent could drive arbitrary outbound requests",
 				)
 				return
 			}

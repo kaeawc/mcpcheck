@@ -6,13 +6,15 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" }
+          "id": {
+            "type": "string"
+          }
         }
       }
     },
     {
       "name": "read_file_pattern",
-      "description": "Read a file under /var/data/ — confined by pattern.",
+      "description": "Read a file under /var/data/ \u2014 confined by pattern.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -31,7 +33,10 @@
         "properties": {
           "file_path": {
             "type": "string",
-            "enum": ["/var/log/app.log", "/var/log/audit.log"]
+            "enum": [
+              "/var/log/app.log",
+              "/var/log/audit.log"
+            ]
           }
         }
       }
@@ -42,8 +47,26 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "directory": { "type": "string", "const": "/var/data" }
+          "directory": {
+            "type": "string",
+            "const": "/var/data"
+          }
         }
+      }
+    },
+    {
+      "name": "read_text_file",
+      "description": "Read the complete contents of a file as text. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
       }
     }
   ]

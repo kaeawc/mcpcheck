@@ -153,8 +153,8 @@ mcpcheck --list-rules --format json      # machine-readable
 | ID | Severity | Category | Summary |
 |---|---|---|---|
 | `destructive-tool-not-gated` | error | safety-contract | Tools whose name implies a destructive or externally-visible action must require explicit confirmation, through a schema field or a destructiveHint: true annotation that tells clients to confirm. |
-| `file-tool-no-path-confinement` | warning | safety-contract | Tools that accept a filesystem path must constrain it via an enum, pattern, or const so an agent cannot read or write arbitrary files (path traversal). |
-| `network-tool-no-allowlist` | warning | safety-contract | Tools that accept a user-supplied URL must constrain the destination via an enum, pattern, or const so an agent cannot drive arbitrary outbound requests (SSRF). |
+| `file-tool-no-path-confinement` | warning | safety-contract | Tools that accept a filesystem path must constrain it via an enum, pattern, or const, or document runtime confinement (e.g. "only works within allowed directories"), so an agent cannot read or write arbitrary files (path traversal). |
+| `network-tool-no-allowlist` | warning | safety-contract | Tools that accept a user-supplied URL must constrain the destination via an enum, pattern, or const, or document runtime confinement (e.g. "only allowed domains"), so an agent cannot drive arbitrary outbound requests (SSRF). |
 | `server-jsonrpc-malformed` | error | protocol-conformance | Server messages must be well-formed JSON-RPC 2.0: correct jsonrpc version, matching response ids, exactly one of result or error. |
 | `server-legacy-protocol-only` | info | protocol-conformance | The server speaks only the legacy initialize-based protocol (2025-11-25 and earlier); clients that implement only 2026-07-28 cannot connect to it. |
 | `server-lifecycle-nonconformant` | warning | protocol-conformance | The initialize exchange must follow the spec: serverInfo with name and version, a capabilities object that declares tools, and no requests the client didn't enable. |
@@ -209,7 +209,9 @@ live session or a `--save` recording.
   Streamable HTTP, and SSE, all exposing the same three tools.
 - `tests/e2e/` — runs the static and live intakes against every
   reference server: `make e2e` (builds them with
-  `tests/servers/setup.sh`, which needs uv, Node, Cargo, and Go).
+  `tests/servers/setup.sh`, which needs uv, Node, Cargo, and Go). CI's
+  `e2e` job runs it with `MCPCHECK_E2E_STRICT=1`, so a server that
+  can't be built fails the job instead of being skipped.
 - `internal/{clock,vfs,fsutil,env,proc,idgen,random,logger,perf,...}` —
   shared plumbing carried over from the
   [`golang-build`](https://github.com/kaeawc/golang-build) template.

@@ -6,9 +6,14 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "url": { "type": "string", "format": "uri" }
+          "url": {
+            "type": "string",
+            "format": "uri"
+          }
         },
-        "required": ["url"]
+        "required": [
+          "url"
+        ]
       }
     },
     {
@@ -17,8 +22,12 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "webhook_url": { "type": "string" },
-          "body":        { "type": "string" }
+          "webhook_url": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
         }
       }
     },
@@ -28,8 +37,26 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "endpoint": { "type": "string" }
+          "endpoint": {
+            "type": "string"
+          }
         }
+      }
+    },
+    {
+      "name": "fetch_page",
+      "description": "Fetch a page. Requests are limited to 10 per minute.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "url"
+        ]
       }
     }
   ]

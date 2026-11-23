@@ -6,7 +6,8 @@
 #
 # Idempotent: re-running only redoes work whose inputs changed. Languages
 # whose toolchain is missing are skipped with a message (exit status stays 0
-# for skips; any real build failure makes the script exit 1).
+# for skips unless MCPCHECK_E2E_STRICT=1; any real build failure makes the
+# script exit 1).
 #
 # Toolchains are looked up on PATH, plus these locations when present:
 #   $MCPCHECK_TOOLING (default /workspaces/tooling): bin/uv, cargo/, rustup/, uv-python/
@@ -123,4 +124,9 @@ echo
 echo "built:   ${BUILT[*]:-none}"
 if [ "${#SKIPPED[@]}" -gt 0 ]; then printf 'skipped: %s\n' "${SKIPPED[@]}"; fi
 if [ "${#FAILED[@]}" -gt 0 ]; then echo "FAILED:  ${FAILED[*]}"; exit 1; fi
+# CI sets MCPCHECK_E2E_STRICT=1 so a missing toolchain fails instead of
+# quietly dropping servers from the e2e run.
+if [ "${MCPCHECK_E2E_STRICT:-}" = 1 ] && [ "${#SKIPPED[@]}" -gt 0 ]; then
+  echo "MCPCHECK_E2E_STRICT=1: skipped servers are an error"; exit 1
+fi
 exit 0

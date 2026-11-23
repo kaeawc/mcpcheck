@@ -4,7 +4,8 @@
 //
 //	MCPCHECK_E2E=1 go test ./tests/e2e/ -count=1 -v
 //
-// Servers whose built artifacts are missing are skipped.
+// Servers whose built artifacts are missing are skipped, unless
+// MCPCHECK_E2E_STRICT=1 (as in CI), which makes them failures.
 package e2e
 
 import (
@@ -168,6 +169,9 @@ func requireArtifact(t *testing.T, dir string, argv []string) {
 	t.Helper()
 	if strings.Contains(argv[0], "/") {
 		if _, err := os.Stat(filepath.Join(dir, argv[0])); err != nil {
+			if os.Getenv("MCPCHECK_E2E_STRICT") == "1" {
+				t.Fatalf("%s not built (run tests/servers/setup.sh)", argv[0])
+			}
 			t.Skipf("%s not built (run tests/servers/setup.sh)", argv[0])
 		}
 	}

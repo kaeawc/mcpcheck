@@ -60,7 +60,8 @@ make ci                                 # vet + test + complexity + lint + secur
   Server rules use a `"server"` object in `tools.json` (the `--save` format).
 - `tests/servers/` — reference servers (one per language × SDK, same three
   tools); `tests/e2e/` checks every intake against them (`make e2e`).
-  When an intake changes, run `make e2e` if the toolchains are available.
+  When an intake changes, run `make e2e` if the toolchains are available;
+  CI runs it in strict mode (`MCPCHECK_E2E_STRICT=1`).
 - `internal/{clock,vfs,fsutil,env,proc,idgen,random,logger,perf,...}` —
   shared plumbing carried over from the `golang-build` template. Time,
   randomness, env, subprocess, and filesystem must be injected through
