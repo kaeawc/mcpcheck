@@ -33,8 +33,8 @@ func init() {
 			for _, name := range staticOnly {
 				idx := staticByName[name]
 				cc.ReportTool(&cc.Static.Tools[idx], fmt.Sprintf(
-					"tool %q appears in static intake but the live server does not advertise it; possible conditional registration or build-time gating",
-					name,
+					"tool %q appears in static intake but the live server does not advertise it; possible conditional registration or build-time gating%s",
+					name, capabilityHint(cc.Live),
 				))
 			}
 
@@ -69,4 +69,14 @@ func indexByName(tools []mcpmodel.Tool) map[string]int {
 		out[t.Name] = i
 	}
 	return out
+}
+
+// capabilityHint suggests declaring client capabilities when the live
+// session declared none, since servers often register some tools only
+// for clients that support roots, sampling, or elicitation.
+func capabilityHint(live *mcpmodel.ToolSet) string {
+	if live.Server != nil && len(live.Server.ClientCapabilities) > 0 {
+		return ""
+	}
+	return " (some servers register tools only for clients that declare roots, sampling, or elicitation: rerun with --client-capabilities all)"
 }

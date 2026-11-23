@@ -1,0 +1,76 @@
+{
+  "tools": [
+    {
+      "name": "bad_name",
+      "description": "Execute SQL on a regional database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "type": "string",
+            "x-mcp-header": "Region Name"
+          }
+        }
+      }
+    },
+    {
+      "name": "bad_type",
+      "description": "Execute SQL on a regional database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ratio": {
+            "type": "number",
+            "x-mcp-header": "Ratio"
+          }
+        }
+      }
+    },
+    {
+      "name": "duplicate",
+      "description": "Execute SQL on a regional database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "a": {
+            "type": "string",
+            "x-mcp-header": "Region"
+          },
+          "b": {
+            "type": "string",
+            "x-mcp-header": "region"
+          }
+        }
+      }
+    },
+    {
+      "name": "unreachable",
+      "description": "Execute SQL on a regional database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "x-mcp-header": "Tag"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "empty",
+      "description": "Execute SQL on a regional database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "x-mcp-header": ""
+          }
+        }
+      }
+    }
+  ]
+}

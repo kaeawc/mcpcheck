@@ -1,0 +1,45 @@
+{
+  "tools": [
+    {
+      "name": "execute_sql",
+      "description": "Execute SQL on a regional database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "type": "string",
+            "x-mcp-header": "Region"
+          },
+          "opts": {
+            "type": "object",
+            "properties": {
+              "tenant": {
+                "type": "integer",
+                "x-mcp-header": "Tenant-Id"
+              }
+            }
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "region",
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "no_headers",
+      "description": "Execute SQL on a regional database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}

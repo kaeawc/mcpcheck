@@ -117,3 +117,25 @@ func TestHasConfirmationField(t *testing.T) {
 		})
 	}
 }
+
+func TestDestructiveAnnotations(t *testing.T) {
+	cases := []struct {
+		name string
+		ann  map[string]any
+		want bool
+	}{
+		{"declared destructive", map[string]any{"destructiveHint": true}, true},
+		{"destructive but read-only", map[string]any{"destructiveHint": true, "readOnlyHint": true}, false},
+		{"disclaimed", map[string]any{"destructiveHint": false}, false},
+		{"absent", nil, false},
+		{"wrong type", map[string]any{"destructiveHint": "true"}, false},
+	}
+	for _, tc := range cases {
+		if got := declaresDestructive(tc.ann); got != tc.want {
+			t.Errorf("%s: declaresDestructive = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	if disclaimedHint(map[string]any{"destructiveHint": false}) == "" || disclaimedHint(nil) != "" {
+		t.Error("disclaimedHint should only mention an explicit destructiveHint: false")
+	}
+}

@@ -1,0 +1,56 @@
+{
+  "tools": [
+    {
+      "name": "delete_file",
+      "description": "Get the current weather for a city.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "city"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "fetch_url",
+      "description": "Get the current weather for a city.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "city"
+        ]
+      },
+      "annotations": {
+        "openWorldHint": "yes"
+      }
+    },
+    {
+      "name": "list_files",
+      "description": "Get the current weather for a city.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "city"
+        ]
+      },
+      "annotations": "readonly"
+    }
+  ]
+}

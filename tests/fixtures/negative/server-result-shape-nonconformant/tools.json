@@ -1,0 +1,23 @@
+{
+  "tools": [
+    {
+      "name": "execute_sql",
+      "description": "Execute SQL on a regional database.",
+      "inputSchema": {
+        "type": "object"
+      }
+    }
+  ],
+  "server": {
+    "transport": "stdio",
+    "endpoint": "python server.py",
+    "protocolVersion": "2026-07-28",
+    "offeredProtocolVersion": "2025-11-25",
+    "name": "db",
+    "version": "1.0",
+    "capabilities": {
+      "tools": {}
+    },
+    "era": "modern"
+  }
+}

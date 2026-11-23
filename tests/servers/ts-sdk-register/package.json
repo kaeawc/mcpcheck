@@ -1,0 +1,13 @@
+{
+  "name": "mcpcheck-ts-sdk-register",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "mcpcheck test corpus server (ts-sdk-register)",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
+  }
+}

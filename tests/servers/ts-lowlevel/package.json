@@ -1,0 +1,12 @@
+{
+  "name": "mcpcheck-ts-lowlevel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "mcpcheck test corpus server (ts-lowlevel)",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "tsx": "4.23.15"
+  }
+}

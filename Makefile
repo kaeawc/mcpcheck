@@ -1,4 +1,4 @@
-.PHONY: build test vet lint fmt complexity security licenses tidy ci clean release-check validate-workflows all
+.PHONY: build test vet lint fmt complexity security licenses tidy ci e2e clean release-check validate-workflows all
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS = -s -w -X main.version=$(VERSION)
@@ -32,6 +32,12 @@ tidy:
 	go mod tidy
 
 ci: vet test complexity lint security licenses
+
+# Builds the reference servers in tests/servers (needs uv, node, cargo,
+# go) and runs the static and live intakes against each of them.
+e2e:
+	tests/servers/setup.sh
+	MCPCHECK_E2E=1 go test ./tests/e2e/ -count=1 -v
 
 release-check:
 	bash scripts/release-check.sh

@@ -25,3 +25,10 @@ go.work.sum
 # build output (root binary; do not match cmd/mcpcheck/)
 /mcpcheck
 .claude/
+
+# tests/servers corpus build artifacts (see tests/servers/setup.sh)
+tests/servers/**/.venv/
+tests/servers/**/node_modules/
+tests/servers/**/target/
+tests/servers/**/bin/
+__pycache__/

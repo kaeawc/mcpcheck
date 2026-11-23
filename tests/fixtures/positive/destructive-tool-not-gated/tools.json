@@ -6,9 +6,13 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" }
+          "id": {
+            "type": "string"
+          }
         },
-        "required": ["id"]
+        "required": [
+          "id"
+        ]
       }
     },
     {
@@ -17,9 +21,15 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "to":      { "type": "string" },
-          "subject": { "type": "string" },
-          "body":    { "type": "string" }
+          "to": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
         }
       }
     },
@@ -29,9 +39,15 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "from":   { "type": "string" },
-          "to":     { "type": "string" },
-          "amount": { "type": "number" }
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
         }
       }
     },
@@ -41,8 +57,21 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "table": { "type": "string" }
+          "table": {
+            "type": "string"
+          }
         }
+      }
+    },
+    {
+      "name": "purge_cache",
+      "description": "Purge every cached entry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "destructiveHint": false
       }
     }
   ]

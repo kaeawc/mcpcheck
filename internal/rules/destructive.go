@@ -56,7 +56,7 @@ func init() {
 		ID:          "destructive-tool-not-gated",
 		Category:    v2.CatSafety,
 		Severity:    v2.SevError,
-		Description: "Tools whose name implies a destructive or externally-visible action must require explicit confirmation through the schema.",
+		Description: "Tools whose name implies a destructive or externally-visible action must require explicit confirmation, through a schema field or a destructiveHint: true annotation that tells clients to confirm.",
 		Fix:         v2.FixNone,
 		Implementation: func(ctx *v2.Context) {
 			name := ctx.Tool.Name
@@ -64,13 +64,14 @@ func init() {
 			if prefix == "" {
 				return
 			}
-			if hasConfirmationField(ctx.Tool.InputSchema) {
+			if hasConfirmationField(ctx.Tool.InputSchema) || declaresDestructive(ctx.Tool.Annotations) {
 				return
 			}
 			ctx.Report(
 				"tool name starts with destructive prefix \"" + prefix +
-					"\" but schema has no confirmation field " +
-					"(expected one of: confirm, confirmed, requires_confirmation, acknowledged, dry_run, force)",
+					"\" but nothing asks for confirmation: annotate it destructiveHint: true so clients confirm before calling, " +
+					"or add a schema field (one of: confirm, confirmed, requires_confirmation, acknowledged, dry_run, force)" +
+					disclaimedHint(ctx.Tool.Annotations),
 			)
 		},
 	})
@@ -89,6 +90,23 @@ func destructivePrefix(name string) string {
 		if lower == p || strings.HasPrefix(lower, p+"_") {
 			return p
 		}
+	}
+	return ""
+}
+
+// declaresDestructive reports annotations that mark the tool destructive
+// (and not read-only), which MCP clients use to require user confirmation.
+func declaresDestructive(ann map[string]any) bool {
+	destructive, _ := ann["destructiveHint"].(bool)
+	readOnly, _ := ann["readOnlyHint"].(bool)
+	return destructive && !readOnly
+}
+
+// disclaimedHint calls out an explicit destructiveHint: false, which tells
+// clients they may skip confirmation.
+func disclaimedHint(ann map[string]any) string {
+	if v, ok := ann["destructiveHint"].(bool); ok && !v {
+		return "; it is currently annotated destructiveHint: false, which tells clients confirmation is unnecessary"
 	}
 	return ""
 }

@@ -6,7 +6,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" }
+          "id": {
+            "type": "string"
+          }
         }
       }
     },
@@ -16,10 +18,17 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "id":      { "type": "string" },
-          "confirm": { "type": "boolean" }
+          "id": {
+            "type": "string"
+          },
+          "confirm": {
+            "type": "boolean"
+          }
         },
-        "required": ["id", "confirm"]
+        "required": [
+          "id",
+          "confirm"
+        ]
       }
     },
     {
@@ -28,10 +37,18 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "to":      { "type": "string" },
-          "subject": { "type": "string" },
-          "body":    { "type": "string" },
-          "dry_run": { "type": "boolean" }
+          "to": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
+          }
         }
       }
     },
@@ -41,8 +58,32 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "limit": { "type": "integer" }
+          "limit": {
+            "type": "integer"
+          }
         }
+      }
+    },
+    {
+      "name": "delete_entities",
+      "description": "Delete entities from the knowledge graph.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "names"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "readOnlyHint": false
       }
     }
   ]

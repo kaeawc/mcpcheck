@@ -43,6 +43,7 @@ const (
 	CatSpec      Category = "spec-compliance"
 	CatSafety    Category = "safety-contract"
 	CatExamples  Category = "examples"
+	CatProtocol  Category = "protocol-conformance"
 )
 
 type Finding struct {
@@ -94,6 +95,21 @@ func (pc *ProjectContext) ReportTool(tool *mcpmodel.Tool, message string) {
 		SourceFile: tool.SourceFile,
 		SourceLine: tool.SourceLine,
 	})
+}
+
+// Report records a finding about the server or tool set as a whole. It
+// carries the set's source file only when the set came from a file.
+func (pc *ProjectContext) Report(message string) {
+	f := Finding{
+		RuleID:   pc.rule.ID,
+		Severity: pc.rule.Severity,
+		Category: pc.rule.Category,
+		Message:  message,
+	}
+	if pc.ToolSet.Server == nil || pc.ToolSet.Server.Endpoint != pc.ToolSet.Source {
+		f.SourceFile = pc.ToolSet.Source
+	}
+	pc.findings = append(pc.findings, f)
 }
 
 func (pc *ProjectContext) Findings() []Finding { return pc.findings }

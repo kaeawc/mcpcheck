@@ -24,13 +24,17 @@ func WriteText(w io.Writer, findings []v2.Finding) error {
 	for _, f := range sorted {
 		loc := f.SourceFile
 		if loc == "" {
-			loc = "<source>"
+			loc = "<server>"
 		}
 		if f.SourceLine > 0 {
 			loc = fmt.Sprintf("%s:%d", loc, f.SourceLine)
 		}
-		if _, err := fmt.Fprintf(w, "%s: %s [%s] tool=%q %s\n",
-			loc, f.Severity, f.RuleID, f.ToolName, f.Message); err != nil {
+		tool := ""
+		if f.ToolName != "" {
+			tool = fmt.Sprintf(" tool=%q", f.ToolName)
+		}
+		if _, err := fmt.Fprintf(w, "%s: %s [%s]%s %s\n",
+			loc, f.Severity, f.RuleID, tool, f.Message); err != nil {
 			return err
 		}
 	}

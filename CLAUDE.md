@@ -40,10 +40,16 @@ make ci                                 # vet + test + complexity + lint + secur
 ## Project structure
 
 - `cmd/mcpcheck/` — CLI entry point.
-- `internal/mcpmodel/` — normalized `Tool` / `ToolSet` types.
-- `internal/scanner/` — intakes that produce a `ToolSet`. Today: JSON
-  intake of MCP `tools/list` responses. Future: tree-sitter Python and
-  TypeScript intakes; live-mode intake that boots a server over stdio.
+- `internal/mcpmodel/` — normalized `Tool` / `ToolSet` types, and
+  `Server` (what a live session observed, including protocol violations).
+- `internal/mcpclient/` — live MCP client: stdio, Streamable HTTP and
+  legacy HTTP+SSE transports, dual-era protocol (`server/discover` for
+  2026-07-28, `initialize` fallback for 2025-11-25 and earlier).
+  Tolerated protocol mistakes are recorded, not fatal; rules report them.
+- `internal/scanner/` — intakes that produce a `ToolSet`: Python, TS/JS,
+  Go (`go/parser`), and Rust source intakes; the JSON intake (also reads
+  `--save` recordings); `LoadLive`. Source intakes share `literal.go`
+  (literal/call-chain parser) and `objtools.go`.
 - `internal/v2/` — rule registry, `Rule`, `Context`, `Finding`,
   `Severity`, `Category`, `FixLevel`, `Run`. Rules call `v2.Register`
   from init.
@@ -51,6 +57,10 @@ make ci                                 # vet + test + complexity + lint + secur
   file and registers itself.
 - `internal/output/` — text and JSON formatters for findings.
 - `tests/fixtures/{positive,negative}/<rule-id>/` — per-rule fixtures.
+  Server rules use a `"server"` object in `tools.json` (the `--save` format).
+- `tests/servers/` — reference servers (one per language × SDK, same three
+  tools); `tests/e2e/` checks every intake against them (`make e2e`).
+  When an intake changes, run `make e2e` if the toolchains are available.
 - `internal/{clock,vfs,fsutil,env,proc,idgen,random,logger,perf,...}` —
   shared plumbing carried over from the `golang-build` template. Time,
   randomness, env, subprocess, and filesystem must be injected through

@@ -1,33 +1,29 @@
-// Python intake — regex-based extractor for FastMCP-style tool
-// declarations. This is intentionally a stopgap: tree-sitter Python
-// parsing is the eventual home for this code, but rules need a Python
-// intake before tree-sitter is wired in, and the regex shape is precise
-// enough to bootstrap the rule pipeline against real Python servers.
+// Python intake for the official SDK (FastMCP in mcp 1.x, MCPServer in
+// mcp 2.x, and the low-level Server), the standalone fastmcp package, and
+// hand-rolled servers. Declarations are located with regexes and read
+// with the shared literal parser.
 //
 // Recognized patterns:
 //
-//	@mcp.tool()                      # @<receiver>.tool with optional args
-//	def fetch_user(id: str) -> dict:
-//	    """Fetch a user by id."""    # docstring used as description
-//	    ...
+//	@mcp.tool / @mcp.tool() / @mcp.tool("name") / @mcp.tool(name=..., description=...,
+//	    title=..., annotations=ToolAnnotations(...) or {...}) on a def or async def
+//	mcp.add_tool(func, name=..., description=...)
+//	types.Tool(name=..., description=..., inputSchema={...}) (low-level server)
+//	{"name": "x", "description": "...", "inputSchema": {...}} (dict literals)
 //
-//	@server.tool(name="custom_name") # explicit name= kwarg overrides def name
-//	def _internal(...):
-//	    """Tool with a custom name."""
-//	    ...
+// For decorated functions the description is the decorator's
+// description= or the cleaned docstring, and the input schema is derived
+// from the signature the way FastMCP does: str/int/float/bool/list/dict,
+// Optional and X | None, Literal (enum), Annotated[..., Field(...)] and
+// Field(...) defaults (description, pattern, bounds), with parameters
+// typed Context excluded and parameters without defaults required.
 //
-// Limitations to be removed when tree-sitter lands:
-//   - Decorator + `def` must be on consecutive non-blank lines.
-//   - Description is just the first line of the docstring.
-//   - InputSchema is left nil; argument introspection happens later.
-//   - The older `@server.list_tools()` returning a list of Tool(...) is
-//     intentionally not handled here; that pattern needs proper AST work.
+// Limitations: Pydantic model and Enum parameters become {} (any), and
+// names or descriptions computed at runtime are not recovered.
 package scanner
 
 import (
-	"bufio"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -36,209 +32,289 @@ import (
 	"github.com/kaeawc/mcpcheck/internal/mcpmodel"
 )
 
-// pyToolDecoratorRe matches lines like `@mcp.tool()`, `@server.tool`,
-// `@app.tool(name="x", description="y")`. The receiver is captured in
-// group 1, the optional argument list in group 2.
-var pyToolDecoratorRe = regexp.MustCompile(
-	`^\s*@\s*([A-Za-z_][A-Za-z0-9_]*)\.tool\b(\s*\(([^)]*)\))?\s*$`,
+var (
+	// pyToolDecoratorRe matches `@mcp.tool`, `@server.tool(`, `@app.mcp.tool`.
+	pyToolDecoratorRe = regexp.MustCompile(`(?m)^[ \t]*@[ \t]*[A-Za-z_][\w.]*\.tool\b`)
+	// pyAddToolRe matches `.add_tool(func`.
+	pyAddToolRe = regexp.MustCompile(`\.add_tool\(\s*([A-Za-z_]\w*)`)
+	// pyToolCallRe matches `Tool(` and `types.Tool(`.
+	pyToolCallRe = regexp.MustCompile(`\bTool\s*\(`)
+	// pyDefRe matches a def line; group 1 is the function name.
+	pyDefRe = regexp.MustCompile(`(?m)^[ \t]*(?:async[ \t]+)?def[ \t]+([A-Za-z_]\w*)[ \t]*\(`)
 )
 
-// pyDefRe matches `def <name>(...)` and `async def <name>(...)`. The
-// function name is captured in group 1.
-var pyDefRe = regexp.MustCompile(
-	`^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
-)
+func isPythonSourceFile(path string) bool { return filepath.Ext(path) == ".py" }
 
-// pyKwargStringRe extracts a `key="value"` (or single-quoted) pair from
-// the decorator argument list. Used for `name=...` and `description=...`.
-var pyKwargStringRe = regexp.MustCompile(
-	`(\w+)\s*=\s*("([^"]*)"|'([^']*)')`,
-)
-
-// pyDocstringStartRe matches the start of a triple-quoted docstring
-// directly inside a function body. Quote style captured in group 1, any
-// content on the opening line captured in group 2.
-var pyDocstringStartRe = regexp.MustCompile(
-	`^\s*(?:[ru]?(?:b)?|b?(?:r|u)?)?("""|''')(.*)$`,
-)
-
-// LoadPythonFile parses a single .py file and returns a ToolSet.
-func LoadPythonFile(path string) (*mcpmodel.ToolSet, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", path, err)
-	}
-	defer f.Close()
-
-	tools, err := scanPythonReader(path, f)
-	if err != nil {
-		return nil, fmt.Errorf("scan %s: %w", path, err)
-	}
-	return &mcpmodel.ToolSet{Tools: tools, Source: path}, nil
-}
-
-// LoadPythonDir walks dir recursively and parses every .py file. Files
-// inside common throwaway directories (`__pycache__`, `.venv`, `venv`,
-// `node_modules`, `.git`) are skipped.
-func LoadPythonDir(dir string) (*mcpmodel.ToolSet, error) {
-	var all []mcpmodel.Tool
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			if shouldSkipDir(d.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".py") {
-			return nil
-		}
-		set, err := LoadPythonFile(path)
+// LoadPython scans a .py file or a directory tree for tool registrations.
+func LoadPython(path string) (*mcpmodel.ToolSet, error) {
+	set := &mcpmodel.ToolSet{Source: path}
+	err := walkSources(path, isPythonSourceFile, func(p string) error {
+		raw, err := os.ReadFile(p) // #nosec G304 -- scanning user-named sources is the point
 		if err != nil {
-			return err
+			return fmt.Errorf("read %s: %w", p, err)
 		}
-		all = append(all, set.Tools...)
+		set.Tools = append(set.Tools, scanPython(p, string(raw))...)
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	return &mcpmodel.ToolSet{Tools: all, Source: dir}, nil
+	return set, err
 }
 
-func shouldSkipDir(name string) bool {
-	switch name {
-	case "__pycache__", ".venv", "venv", "env", "node_modules", ".git", ".tox", "build", "dist":
-		return true
-	}
-	return false
-}
-
-// scanPythonReader reads source from r and returns the tools it found.
-// Exposed at package level (lowercase) so tests can drive it from a
-// strings.Reader without writing fixture files.
-func scanPythonReader(sourcePath string, r interface{ Read([]byte) (int, error) }) ([]mcpmodel.Tool, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-
-	var lines []string
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
+// scanPython extracts tools from one source file.
+func scanPython(path, src string) []mcpmodel.Tool {
+	consts := pyConsts(src)
 	var tools []mcpmodel.Tool
-
-	for i := 0; i < len(lines); i++ {
-		decoratorMatch := pyToolDecoratorRe.FindStringSubmatch(lines[i])
-		if decoratorMatch == nil {
-			continue
+	for _, m := range pyToolDecoratorRe.FindAllStringIndex(src, -1) {
+		if t, ok := pyDecoratedTool(src, m[1], consts); ok {
+			t.SourceFile, t.SourceLine = path, lineAt(src, m[0])
+			tools = append(tools, t)
 		}
-		decoratorArgs := decoratorMatch[3]
-
-		defLine, defLineIdx := nextDefLine(lines, i+1)
-		if defLineIdx < 0 {
-			continue
-		}
-		defMatch := pyDefRe.FindStringSubmatch(defLine)
-		if defMatch == nil {
-			continue
-		}
-		name, description := decoratorNameAndDescription(defMatch[1], decoratorArgs)
-		if description == "" {
-			description = extractDocstringFirstLine(lines, defLineIdx+1)
-		}
-
-		tools = append(tools, mcpmodel.Tool{
-			Name:        name,
-			Description: description,
-			SourceFile:  sourcePath,
-			SourceLine:  i + 1, // decorator line, 1-indexed
-		})
 	}
-
-	return tools, nil
+	tools = append(tools, pyAddTools(path, src, consts)...)
+	tools = append(tools, pyToolCalls(path, src)...)
+	return append(tools, objectLiteralTools(path, src, langPython, literalSchema)...)
 }
 
-// decoratorNameAndDescription reads the name= and description= keyword
-// arguments from a tool decorator, defaulting the name to the function name.
-func decoratorNameAndDescription(funcName, decoratorArgs string) (name, description string) {
-	name = funcName
-	for _, kv := range pyKwargStringRe.FindAllStringSubmatch(decoratorArgs, -1) {
-		value := kv[3]
-		if value == "" {
-			value = kv[4]
-		}
-		switch kv[1] {
-		case "name":
-			name = value
-		case "description":
-			description = value
+// pyDecoratedTool reads the decorator arguments starting at pos (just
+// after `.tool`) and the function they decorate.
+func pyDecoratedTool(src string, pos int, consts pyConstMap) (mcpmodel.Tool, bool) {
+	p := newLitParser(src, pos, langPython)
+	p.wsInline()
+	var args []any
+	var kwargs map[string]any
+	if p.peek() == '(' {
+		args, kwargs = p.callArgs()
+	}
+	def, ok := pyFindDef(src, p.pos)
+	if !ok {
+		return mcpmodel.Tool{}, false
+	}
+	if len(args) > 0 {
+		if name, ok := consts.str(args[0]); ok {
+			kwargs = withDefault(kwargs, "name", name)
 		}
 	}
-	return name, description
+	return pyToolFromDef(src, def, consts.resolveAll(kwargs)), true
 }
 
-// nextDefLine walks forward from `start`, skipping blank lines, comments,
-// and additional decorator lines, and returns the first line that should
-// contain a `def`. This lets us accept stacked decorators like
-//
-//	@mcp.tool()
-//	@cached_property
-//	def fetch_user(...):
-func nextDefLine(lines []string, start int) (string, int) {
-	for i := start; i < len(lines); i++ {
-		trimmed := strings.TrimSpace(lines[i])
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "@") {
-			continue
-		}
-		return lines[i], i
-	}
-	return "", -1
-}
-
-// extractDocstringFirstLine looks at the first statement line of a
-// function body (line index `start`) and returns the first line of a
-// triple-quoted docstring if present, else "".
-func extractDocstringFirstLine(lines []string, start int) string {
-	if start >= len(lines) {
-		return ""
-	}
-	first := lines[start]
-	m := pyDocstringStartRe.FindStringSubmatch(first)
+func withDefault(m map[string]any, key string, v any) map[string]any {
 	if m == nil {
-		return ""
+		m = map[string]any{}
 	}
-	quote := m[1]
-	rest := m[2]
+	if _, ok := m[key]; !ok {
+		m[key] = v
+	}
+	return m
+}
 
-	// Single-line docstring: """foo bar"""
-	if idx := strings.Index(rest, quote); idx >= 0 {
-		return strings.TrimSpace(rest[:idx])
-	}
-
-	// First line of body of multi-line docstring is in `rest`. If `rest`
-	// is empty the convention is that the description starts on the next
-	// line — return that one.
-	if strings.TrimSpace(rest) != "" {
-		return strings.TrimSpace(rest)
-	}
-	for j := start + 1; j < len(lines); j++ {
-		trimmed := strings.TrimSpace(lines[j])
-		if trimmed == "" {
+// pyFindDef returns the def match following a decorator, skipping blank
+// lines, comments, and further (possibly multi-line) decorators.
+func pyFindDef(src string, pos int) ([]int, bool) {
+	for pos < len(src) {
+		pos = nextLine(src, pos)
+		rest := strings.TrimLeft(src[pos:], " \t")
+		switch {
+		case rest == "" || strings.HasPrefix(rest, "\n") || strings.HasPrefix(rest, "#"):
+			continue
+		case strings.HasPrefix(rest, "@"):
+			pos = skipDecorator(src, pos)
 			continue
 		}
-		if strings.HasSuffix(trimmed, quote) {
-			return strings.TrimSpace(strings.TrimSuffix(trimmed, quote))
+		m := pyDefRe.FindStringSubmatchIndex(src[pos:])
+		if m == nil || m[0] != 0 {
+			return nil, false
 		}
-		return trimmed
+		for i := range m {
+			m[i] += pos
+		}
+		return m, true
 	}
-	return ""
+	return nil, false
+}
+
+// nextLine returns the offset just past the next newline at or after pos.
+func nextLine(src string, pos int) int {
+	if i := strings.IndexByte(src[pos:], '\n'); i >= 0 {
+		return pos + i + 1
+	}
+	return len(src)
+}
+
+// skipDecorator returns the start of the last line of the decorator at
+// pos, which spans several lines when its argument list does.
+func skipDecorator(src string, pos int) int {
+	end := nextLine(src, pos)
+	open := strings.IndexByte(src[pos:end], '(')
+	if open < 0 {
+		return pos
+	}
+	p := newLitParser(src, pos+open, langPython)
+	p.skipBalanced()
+	return lineStart(src, p.pos)
+}
+
+func lineStart(src string, pos int) int {
+	return strings.LastIndexByte(src[:pos], '\n') + 1
+}
+
+// pyToolFromDef builds a tool from a def match and decorator/add_tool
+// keyword arguments.
+func pyToolFromDef(src string, def []int, kwargs map[string]any) mcpmodel.Tool {
+	funcName := src[def[2]:def[3]]
+	params, bodyPos := pyParams(src, def[1]-1)
+	t := mcpmodel.Tool{Name: funcName, InputSchema: pySchema(params)}
+	if name, ok := asString(kwargs["name"]); ok && name != "" {
+		t.Name = name
+	}
+	t.Title, _ = asString(kwargs["title"])
+	t.Description, _ = asString(kwargs["description"])
+	if t.Description == "" {
+		t.Description = pyDocstring(src, bodyPos)
+	}
+	if v, ok := kwargs["annotations"]; ok {
+		t.Annotations = annotationsValue(v)
+	}
+	return t
+}
+
+// pyAddTools handles mcp.add_tool(func, name=..., description=...).
+func pyAddTools(path, src string, consts pyConstMap) []mcpmodel.Tool {
+	defs := map[string][]int{}
+	for _, m := range pyDefRe.FindAllStringSubmatchIndex(src, -1) {
+		defs[src[m[2]:m[3]]] = m
+	}
+	var tools []mcpmodel.Tool
+	for _, m := range pyAddToolRe.FindAllStringSubmatchIndex(src, -1) {
+		def, ok := defs[src[m[2]:m[3]]]
+		if !ok {
+			continue
+		}
+		_, kwargs := newLitParser(src, m[0]+len(".add_tool"), langPython).callArgs()
+		t := pyToolFromDef(src, def, consts.resolveAll(kwargs))
+		t.SourceFile, t.SourceLine = path, lineAt(src, m[0])
+		tools = append(tools, t)
+	}
+	return tools
+}
+
+// pyToolCalls handles low-level types.Tool(name=..., inputSchema=...).
+func pyToolCalls(path, src string) []mcpmodel.Tool {
+	var tools []mcpmodel.Tool
+	for _, m := range pyToolCallRe.FindAllStringIndex(src, -1) {
+		_, kwargs := newLitParser(src, m[1]-1, langPython).callArgs()
+		if t, ok := toolFromFields(kwargs, literalSchema); ok {
+			t.SourceFile, t.SourceLine = path, lineAt(src, m[0])
+			tools = append(tools, t)
+		}
+	}
+	return tools
+}
+
+// pyDocstring returns the cleaned docstring of the body at pos, the
+// way inspect.cleandoc presents it.
+func pyDocstring(src string, pos int) string {
+	p := newLitParser(src, pos, langPython)
+	p.depth = 1 // the docstring may start on a later line
+	p.ws()
+	prefixed := isPyStringPrefix(string(p.peek())) && p.isQuote(p.peekNext())
+	if !p.isQuote(p.peek()) && !prefixed {
+		return ""
+	}
+	if prefixed {
+		p.pos++
+	}
+	doc, ok := p.stringLit().(string)
+	if !ok {
+		return ""
+	}
+	return cleandoc(doc)
+}
+
+// cleandoc mirrors Python's inspect.cleandoc.
+func cleandoc(doc string) string {
+	lines := strings.Split(strings.ReplaceAll(doc, "\t", "        "), "\n")
+	indent := -1
+	for _, l := range lines[1:] {
+		if trimmed := strings.TrimLeft(l, " "); trimmed != "" {
+			if n := len(l) - len(trimmed); indent < 0 || n < indent {
+				indent = n
+			}
+		}
+	}
+	lines[0] = strings.TrimSpace(lines[0])
+	for i := 1; i < len(lines); i++ {
+		if indent > 0 && len(lines[i]) >= indent {
+			lines[i] = lines[i][indent:]
+		}
+		lines[i] = strings.TrimRight(lines[i], " ")
+	}
+	return strings.Trim(strings.Join(lines, "\n"), "\n")
+}
+
+var (
+	// pyAssignRe matches a module-level `NAME = ` assignment.
+	pyAssignRe = regexp.MustCompile(`(?m)^([A-Za-z_]\w*)[ \t]*(?::[^=\n]+)?=[ \t]*`)
+	// pyEnumClassRe matches `class Name(..Enum..):`.
+	pyEnumClassRe = regexp.MustCompile(`(?m)^class[ \t]+(\w+)[ \t]*\(([^)]*Enum[^)]*)\)[ \t]*:`)
+	// pyMemberRe matches an indented `MEMBER = ` line in a class body.
+	pyMemberRe = regexp.MustCompile(`^[ \t]+([A-Za-z_]\w*)[ \t]*=[ \t]*`)
+)
+
+// pyConstMap holds module-level assignments and Enum members
+// ("Class.MEMBER") so names like GitTools.STATUS.value resolve.
+type pyConstMap map[string]any
+
+func pyConsts(src string) pyConstMap {
+	consts := pyConstMap{}
+	for _, m := range pyAssignRe.FindAllStringSubmatchIndex(src, -1) {
+		consts[src[m[2]:m[3]]] = newLitParser(src, m[1], langPython).value()
+	}
+	for _, m := range pyEnumClassRe.FindAllStringSubmatchIndex(src, -1) {
+		pyEnumMembers(src, m[1], src[m[2]:m[3]], consts)
+	}
+	return consts
+}
+
+// pyEnumMembers records the members of the class body starting at pos.
+func pyEnumMembers(src string, pos int, class string, consts pyConstMap) {
+	for pos = nextLine(src, pos); pos < len(src); pos = nextLine(src, pos) {
+		line := src[pos:nextLine(src, pos)]
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			return
+		}
+		if m := pyMemberRe.FindStringSubmatchIndex(line); m != nil {
+			consts[class+"."+line[m[2]:m[3]]] = newLitParser(src, pos+m[1], langPython).value()
+		}
+	}
+}
+
+// resolve replaces an identifier, X.MEMBER, or X.MEMBER.value chain with
+// the constant it names.
+func (c pyConstMap) resolve(v any) any {
+	ch, ok := v.(*chainValue)
+	if !ok || ch.base != nil {
+		return v
+	}
+	for _, seg := range ch.segments {
+		if seg.called || seg.index != nil {
+			return v
+		}
+	}
+	name := strings.TrimSuffix(ch.chainName(), ".value")
+	if target, found := c[name]; found {
+		return target
+	}
+	return v
+}
+
+func (c pyConstMap) str(v any) (string, bool) { return asString(c.resolve(v)) }
+
+func (c pyConstMap) resolveAll(kwargs map[string]any) map[string]any {
+	out := make(map[string]any, len(kwargs))
+	for k, v := range kwargs {
+		out[k] = c.resolve(v)
+	}
+	return out
 }

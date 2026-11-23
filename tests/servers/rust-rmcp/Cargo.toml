@@ -1,0 +1,13 @@
+[package]
+name = "rust-rmcp"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rmcp = { version = "=3.11.0", features = ["server", "macros", "schemars", "transport-io", "transport-streamable-http-server"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "net", "signal"] }
+serde = { version = "1", features = ["derive"] }
+schemars = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+anyhow = "1"
