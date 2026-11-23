@@ -6,7 +6,7 @@ import (
 
 	"github.com/kaeawc/mcpcheck/internal/mcpmodel"
 	_ "github.com/kaeawc/mcpcheck/internal/rules"
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 func findStaticVsLiveRule(t *testing.T) *v2.Rule {

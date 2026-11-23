@@ -54,7 +54,7 @@ type jsonrpcError struct {
 // FetchToolsLive performs the MCP handshake (initialize + initialized
 // notification + tools/list) by writing requests to stdin and reading
 // responses from stdout. Returns the parsed tool set on success.
-func FetchToolsLive(ctx context.Context, stdin io.Writer, stdout io.Reader) ([]mcpmodel.Tool, error) {
+func FetchToolsLive(_ context.Context, stdin io.Writer, stdout io.Reader) ([]mcpmodel.Tool, error) {
 	dec := bufio.NewReader(stdout)
 
 	// initialize
@@ -113,6 +113,7 @@ func LoadLive(ctx context.Context, cmd []string) (*mcpmodel.ToolSet, error) {
 	if len(cmd) == 0 {
 		return nil, fmt.Errorf("LoadLive: empty command")
 	}
+	// #nosec G204 -- running a caller-supplied command is the point of --live.
 	proc := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 	stdin, err := proc.StdinPipe()
 	if err != nil {

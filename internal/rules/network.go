@@ -3,7 +3,7 @@ package rules
 import (
 	"strings"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 // urlPropertyNames is the set of input-property names that strongly imply
@@ -11,15 +11,15 @@ import (
 // case-insensitive against the lowered + separator-stripped property name
 // (so "targetURL", "target_url", and "target-url" all hit "targeturl").
 var urlPropertyNames = map[string]struct{}{
-	"url":          {},
-	"uri":          {},
-	"endpoint":     {},
-	"webhook":      {},
-	"webhookurl":   {},
-	"callbackurl":  {},
-	"targeturl":    {},
-	"redirecturl":  {},
-	"requesturl":   {},
+	"url":         {},
+	"uri":         {},
+	"endpoint":    {},
+	"webhook":     {},
+	"webhookurl":  {},
+	"callbackurl": {},
+	"targeturl":   {},
+	"redirecturl": {},
+	"requesturl":  {},
 }
 
 func init() {
@@ -71,4 +71,3 @@ func isURLPropertyName(key string) bool {
 	_, ok := urlPropertyNames[stripped]
 	return ok
 }
-

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	_ "github.com/kaeawc/mcpcheck/internal/rules" // register rules so the driver section is populated
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 func TestWriteSARIF_Shape(t *testing.T) {

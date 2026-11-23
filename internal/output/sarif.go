@@ -5,7 +5,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 // SARIF version targeted by WriteSARIF. SARIF 2.1.0 is the common
@@ -25,8 +25,8 @@ type sarifLog struct {
 }
 
 type sarifRun struct {
-	Tool    sarifTool      `json:"tool"`
-	Results []sarifResult  `json:"results"`
+	Tool    sarifTool     `json:"tool"`
+	Results []sarifResult `json:"results"`
 }
 
 type sarifTool struct {
@@ -34,9 +34,9 @@ type sarifTool struct {
 }
 
 type sarifDriver struct {
-	Name           string             `json:"name"`
-	InformationURI string             `json:"informationUri,omitempty"`
-	Rules          []sarifRuleDescr   `json:"rules,omitempty"`
+	Name           string           `json:"name"`
+	InformationURI string           `json:"informationUri,omitempty"`
+	Rules          []sarifRuleDescr `json:"rules,omitempty"`
 }
 
 type sarifRuleDescr struct {

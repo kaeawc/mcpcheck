@@ -3,7 +3,7 @@ package rules
 import (
 	"unicode"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 func init() {

@@ -89,11 +89,11 @@ func TestEmailIsPlaceholder(t *testing.T) {
 
 func TestPhoneIsPlaceholder(t *testing.T) {
 	placeholder := []string{
-		"555-867-5309",        // 555 area code, 7-digit-style
-		"(555) 867-5309",      // 555 area code with parens
-		"415-555-0100",        // 555 exchange
-		"212-555-3000",        // 555 exchange, different area
-		"555-1234",            // 7-digit local form
+		"555-867-5309",   // 555 area code, 7-digit-style
+		"(555) 867-5309", // 555 area code with parens
+		"415-555-0100",   // 555 exchange
+		"212-555-3000",   // 555 exchange, different area
+		"555-1234",       // 7-digit local form
 	}
 	genuine := []string{
 		"415-867-5309",

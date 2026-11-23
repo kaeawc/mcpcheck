@@ -3,7 +3,7 @@ package rules
 import (
 	"strings"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 // destructivePrefixes is the heuristic list of name prefixes that imply a
@@ -37,18 +37,18 @@ var destructivePrefixes = []string{
 // as evidence that the tool requires explicit confirmation before acting.
 // The match is case-insensitive.
 var confirmationFieldNames = map[string]struct{}{
-	"confirm":                 {},
-	"confirmed":               {},
-	"confirmation":            {},
-	"requires_confirmation":   {},
-	"requiresconfirmation":    {},
-	"acknowledged":            {},
-	"acknowledge":             {},
-	"i_understand":            {},
-	"iunderstand":             {},
-	"force":                   {},
-	"dry_run":                 {},
-	"dryrun":                  {},
+	"confirm":               {},
+	"confirmed":             {},
+	"confirmation":          {},
+	"requires_confirmation": {},
+	"requiresconfirmation":  {},
+	"acknowledged":          {},
+	"acknowledge":           {},
+	"i_understand":          {},
+	"iunderstand":           {},
+	"force":                 {},
+	"dry_run":               {},
+	"dryrun":                {},
 }
 
 func init() {

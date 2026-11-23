@@ -6,33 +6,33 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 func sampleRules() []*v2.Rule {
 	return []*v2.Rule{
 		{
-			ID:          "z-rule",
-			Category:    v2.CatSpec,
-			Severity:    v2.SevWarning,
-			Description: "z description",
-			Fix:         v2.FixCosmetic,
+			ID:             "z-rule",
+			Category:       v2.CatSpec,
+			Severity:       v2.SevWarning,
+			Description:    "z description",
+			Fix:            v2.FixCosmetic,
 			Implementation: func(*v2.Context) {},
 		},
 		{
-			ID:          "a-rule",
-			Category:    v2.CatSafety,
-			Severity:    v2.SevError,
-			Description: "a description",
-			Fix:         v2.FixNone,
+			ID:             "a-rule",
+			Category:       v2.CatSafety,
+			Severity:       v2.SevError,
+			Description:    "a description",
+			Fix:            v2.FixNone,
 			Implementation: func(*v2.Context) {},
 		},
 		{
-			ID:          "m-rule",
-			Category:    v2.CatSpec,
-			Severity:    v2.SevError,
-			Description: "m description",
-			Fix:         v2.FixNone,
+			ID:                    "m-rule",
+			Category:              v2.CatSpec,
+			Severity:              v2.SevError,
+			Description:           "m description",
+			Fix:                   v2.FixNone,
 			ProjectImplementation: func(*v2.ProjectContext) {},
 		},
 	}
@@ -50,7 +50,7 @@ func TestWriteRulesText_SortedAndContainsFields(t *testing.T) {
 	if a < 0 || m < 0 || z < 0 {
 		t.Fatalf("missing rule ids in output:\n%s", out)
 	}
-	if !(a < m && m < z) {
+	if a >= m || m >= z {
 		t.Fatalf("rules not sorted by id: a=%d m=%d z=%d\n%s", a, m, z, out)
 	}
 	for _, want := range []string{"a-rule", "error", "safety-contract", "z-rule", "cosmetic"} {

@@ -148,22 +148,7 @@ func scanPythonReader(sourcePath string, r interface{ Read([]byte) (int, error) 
 		if defMatch == nil {
 			continue
 		}
-		funcName := defMatch[1]
-
-		name := funcName
-		var description string
-		for _, kv := range pyKwargStringRe.FindAllStringSubmatch(decoratorArgs, -1) {
-			value := kv[3]
-			if value == "" {
-				value = kv[4]
-			}
-			switch kv[1] {
-			case "name":
-				name = value
-			case "description":
-				description = value
-			}
-		}
+		name, description := decoratorNameAndDescription(defMatch[1], decoratorArgs)
 		if description == "" {
 			description = extractDocstringFirstLine(lines, defLineIdx+1)
 		}
@@ -177,6 +162,25 @@ func scanPythonReader(sourcePath string, r interface{ Read([]byte) (int, error) 
 	}
 
 	return tools, nil
+}
+
+// decoratorNameAndDescription reads the name= and description= keyword
+// arguments from a tool decorator, defaulting the name to the function name.
+func decoratorNameAndDescription(funcName, decoratorArgs string) (name, description string) {
+	name = funcName
+	for _, kv := range pyKwargStringRe.FindAllStringSubmatch(decoratorArgs, -1) {
+		value := kv[3]
+		if value == "" {
+			value = kv[4]
+		}
+		switch kv[1] {
+		case "name":
+			name = value
+		case "description":
+			description = value
+		}
+	}
+	return name, description
 }
 
 // nextDefLine walks forward from `start`, skipping blank lines, comments,
