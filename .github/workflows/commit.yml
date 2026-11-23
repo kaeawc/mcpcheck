@@ -60,6 +60,45 @@ jobs:
         with:
           report_paths: 'junit-report.xml'
 
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MCPCHECK_E2E_STRICT: "1"
+    steps:
+      - name: "Git Checkout"
+        uses: actions/checkout@v7
+
+      - name: "Set up Go"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+          cache-dependency-path: |
+            go.sum
+            tests/servers/*/go.sum
+
+      - name: "Set up Node"
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/servers/*/package-lock.json
+
+      - name: "Set up uv"
+        uses: astral-sh/setup-uv@v10.4.0
+
+      - name: "Set up Rust"
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: "Cache Rust build"
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tests/servers/rust-rmcp -> target
+
+      - name: "Build reference servers and run e2e"
+        run: make e2e
+
   complexity:
     runs-on: ubuntu-latest
     steps:

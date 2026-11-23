@@ -1,5 +1,7 @@
 package rules
 
+import "regexp"
+
 // hasStringValueConstraint reports whether propSchema bounds the set of
 // acceptable string values for a property via enum, pattern, or const.
 //
@@ -21,4 +23,23 @@ func hasStringValueConstraint(propSchema map[string]any) bool {
 		return true
 	}
 	return false
+}
+
+// Phrases a tool uses to document that the server confines a path or URL
+// at runtime, e.g. the official filesystem server's "Only works within
+// allowed directories". The noun is required so that wording like
+// "limited to 100 results" doesn't count.
+var (
+	pathConfinementRe = regexp.MustCompile(`(?i)\b(?:allowed|permitted|configured|approved|allowlisted|whitelisted)\s+(?:directories|directory|paths|folders|roots)\b` +
+		`|\bsandbox(?:ed)?\s+(?:directory|dir|folder|root|path)\b` +
+		`|\b(?:restricted|limited|confined|scoped)\s+to\s+(?:the\s+)?(?:\w+\s+){0,2}(?:directories|directory|paths|folders|roots|workspace|project)\b`)
+	urlConfinementRe = regexp.MustCompile(`(?i)\b(?:allowed|permitted|configured|approved|allowlisted|whitelisted)\s+(?:domains?|hosts?|origins?|urls?|sites?|endpoints?)\b` +
+		`|\b(?:restricted|limited|confined|scoped)\s+to\s+(?:the\s+)?(?:\w+\s+){0,2}(?:domains?|hosts?|origins?|urls?|sites?)\b`)
+)
+
+// documentsConfinement reports whether the tool's or the property's
+// description says the server confines the value at runtime.
+func documentsConfinement(re *regexp.Regexp, toolDescription string, propSchema map[string]any) bool {
+	propDescription, _ := propSchema["description"].(string)
+	return re.MatchString(toolDescription) || re.MatchString(propDescription)
 }

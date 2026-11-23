@@ -30,7 +30,7 @@ func init() {
 		ID:          "file-tool-no-path-confinement",
 		Category:    v2.CatSafety,
 		Severity:    v2.SevWarning,
-		Description: "Tools that accept a filesystem path must constrain it via an enum, pattern, or const so an agent cannot read or write arbitrary files (path traversal).",
+		Description: "Tools that accept a filesystem path must constrain it via an enum, pattern, or const, or document runtime confinement (e.g. \"only works within allowed directories\"), so an agent cannot read or write arbitrary files (path traversal).",
 		Fix:         v2.FixNone,
 		Implementation: func(ctx *v2.Context) {
 			schema := ctx.Tool.InputSchema
@@ -54,12 +54,12 @@ func init() {
 				if !ok {
 					continue
 				}
-				if hasStringValueConstraint(prop) {
+				if hasStringValueConstraint(prop) || documentsConfinement(pathConfinementRe, ctx.Tool.Description, prop) {
 					continue
 				}
 				ctx.Report(
 					"input property \"" + key + "\" looks like a filesystem path but has no allowlist " +
-						"(expected one of: enum, pattern, const) — agent could read or write arbitrary files",
+						"(expected one of: enum, pattern, const) and the tool doesn't document runtime confinement — agent could read or write arbitrary files",
 				)
 				return
 			}
