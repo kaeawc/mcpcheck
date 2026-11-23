@@ -34,7 +34,7 @@ import (
 	"github.com/kaeawc/mcpcheck/internal/output"
 	_ "github.com/kaeawc/mcpcheck/internal/rules"
 	"github.com/kaeawc/mcpcheck/internal/scanner"
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 func main() {
@@ -68,28 +68,32 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), *liveTimeout)
 	defer cancel()
 
-	var staticSet, liveSet *mcpmodel.ToolSet
-	if hasPath {
-		set, err := scanner.Load(flag.Arg(0))
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
-			os.Exit(1)
-		}
-		staticSet = set
-	}
-	if hasLive {
-		set, err := loadLiveCmd(ctx, *live)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "mcpcheck:", err)
-			os.Exit(1)
-		}
-		liveSet = set
+	staticSet, liveSet, err := loadSets(ctx, hasPath, hasLive, *live)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "mcpcheck:", err)
+		os.Exit(1)
 	}
 
 	if err := analyzeAll(staticSet, liveSet, *format); err != nil {
 		fmt.Fprintln(os.Stderr, "mcpcheck:", err)
 		os.Exit(1)
 	}
+}
+
+// loadSets loads the static set from the positional path and the live set
+// from the --live command, each only when requested.
+func loadSets(ctx context.Context, hasPath, hasLive bool, live string) (staticSet, liveSet *mcpmodel.ToolSet, err error) {
+	if hasPath {
+		if staticSet, err = scanner.Load(flag.Arg(0)); err != nil {
+			return nil, nil, err
+		}
+	}
+	if hasLive {
+		if liveSet, err = loadLiveCmd(ctx, live); err != nil {
+			return nil, nil, err
+		}
+	}
+	return staticSet, liveSet, nil
 }
 
 // loadLiveCmd splits live by whitespace and runs the live intake. The
@@ -149,21 +153,8 @@ func analyzeAll(static, live *mcpmodel.ToolSet, format string) error {
 		findings = append(findings, v2.RunComparison(rules, static, live)...)
 	}
 
-	switch format {
-	case "text":
-		if err := output.WriteText(os.Stdout, findings); err != nil {
-			return err
-		}
-	case "json":
-		if err := output.WriteJSON(os.Stdout, findings); err != nil {
-			return err
-		}
-	case "sarif":
-		if err := output.WriteSARIF(os.Stdout, findings); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unknown --format %q (want text|json|sarif)", format)
+	if err := writeFindings(format, findings); err != nil {
+		return err
 	}
 
 	for _, f := range findings {
@@ -172,4 +163,17 @@ func analyzeAll(static, live *mcpmodel.ToolSet, format string) error {
 		}
 	}
 	return nil
+}
+
+func writeFindings(format string, findings []v2.Finding) error {
+	switch format {
+	case "text":
+		return output.WriteText(os.Stdout, findings)
+	case "json":
+		return output.WriteJSON(os.Stdout, findings)
+	case "sarif":
+		return output.WriteSARIF(os.Stdout, findings)
+	default:
+		return fmt.Errorf("unknown --format %q (want text|json|sarif)", format)
+	}
 }

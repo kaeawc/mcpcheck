@@ -3,7 +3,7 @@ package rules
 import (
 	"strings"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 // pathPropertyNames is the set of input-property names that imply the tool

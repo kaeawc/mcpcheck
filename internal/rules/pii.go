@@ -5,16 +5,16 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 // piiPattern groups a pattern with its human-readable kind for finding
 // messages and a sentinel-value allowlist (literal lowercase strings
 // that look like PII but are universally understood as placeholders).
 type piiPattern struct {
-	kind        string
-	re          *regexp.Regexp
-	allowlist   func(matched string) bool
+	kind      string
+	re        *regexp.Regexp
+	allowlist func(matched string) bool
 }
 
 var (

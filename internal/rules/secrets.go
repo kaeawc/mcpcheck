@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 // secretMentionRe matches case-insensitive references to credential-shaped

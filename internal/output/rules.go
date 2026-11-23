@@ -6,7 +6,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 // WriteRulesText prints registered rules in a tabular form suitable for
@@ -33,12 +33,12 @@ func WriteRulesText(w io.Writer, rules []*v2.Rule) error {
 // (docs generators, rule-set diff tools) can consume it stably.
 func WriteRulesJSON(w io.Writer, rules []*v2.Rule) error {
 	type ruleJSON struct {
-		ID          string `json:"id"`
-		Category    string `json:"category"`
-		Severity    string `json:"severity"`
-		Description string `json:"description"`
-		Fix         string `json:"fix,omitempty"`
-		ProjectScope bool  `json:"projectScope,omitempty"`
+		ID           string `json:"id"`
+		Category     string `json:"category"`
+		Severity     string `json:"severity"`
+		Description  string `json:"description"`
+		Fix          string `json:"fix,omitempty"`
+		ProjectScope bool   `json:"projectScope,omitempty"`
 	}
 
 	sorted := append([]*v2.Rule(nil), rules...)

@@ -2,11 +2,12 @@ package rules
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 func init() {
@@ -87,7 +88,8 @@ func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {
 // the actionable detail lives in the deepest leaf cause. Falls back to
 // the first line of the full message for any non-ValidationError.
 func summarizeValidationError(err error) string {
-	if ve, ok := err.(*jsonschema.ValidationError); ok {
+	var ve *jsonschema.ValidationError
+	if errors.As(err, &ve) {
 		leaf := deepestCause(ve)
 		return leaf.Error()
 	}

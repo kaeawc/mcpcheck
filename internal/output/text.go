@@ -7,7 +7,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 // WriteText prints findings in a compact one-per-line form suitable for

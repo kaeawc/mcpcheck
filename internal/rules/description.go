@@ -3,7 +3,7 @@ package rules
 import (
 	"strings"
 
-	"github.com/kaeawc/mcpcheck/internal/v2"
+	v2 "github.com/kaeawc/mcpcheck/internal/v2"
 )
 
 // minDescriptionLen is the threshold below which a non-empty description is
